@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, unity_roots
+from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_unity_family, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -33,6 +33,19 @@ class NewtonFractalTests(unittest.TestCase):
         self.assertEqual(sum(stats.basin_counts) + stats.stalled_points, width * height)
         self.assertGreater(stats.converged_points, 0)
         self.assertGreater(stats.mean_iterations, 0.0)
+
+    def test_power_scan_returns_bounded_rows(self) -> None:
+        rows = scan_unity_family(2, 5, width=24, height=24, max_iter=30)
+        self.assertEqual([row.power for row in rows], [2, 3, 4, 5])
+        for row in rows:
+            self.assertGreater(row.mean_iterations, 0.0)
+            self.assertGreaterEqual(row.converged_fraction, 0.0)
+            self.assertLessEqual(row.converged_fraction, 1.0)
+            self.assertGreaterEqual(row.stalled_fraction, 0.0)
+            self.assertLessEqual(row.stalled_fraction, 1.0)
+            self.assertGreaterEqual(row.min_share, 0.0)
+            self.assertLessEqual(row.max_share, 1.0)
+            self.assertLessEqual(row.min_share, row.max_share)
 
 
 if __name__ == "__main__":

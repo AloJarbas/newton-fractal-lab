@@ -11,7 +11,8 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 - SVG renderer for basin maps with iteration shading
 - CLI for single-point reports, grid summaries, and figure generation
 - generated gallery for `z^3 - 1`, `z^4 - 1`, and `z^5 - 1`
-- small tests that check roots, convergence, and grid accounting
+- a generated power-scan figure that tracks how convergence and basin-share spread drift as `n` increases
+- small tests that check roots, convergence, grid accounting, and the scan layer
 
 ## Gallery
 
@@ -26,6 +27,10 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 ### `z^5 - 1`
 
 ![Newton fractal for z^5 - 1](art/newton-z5-minus-1.svg)
+
+### Unity-family power scan
+
+![Unity-family power scan](art/unity-power-scan.svg)
 
 ## Why this repo is worth opening
 
@@ -43,7 +48,7 @@ This repo is small on purpose:
 
 ## Quick start
 
-Generate the gallery and report:
+Generate the gallery, power scan, and reports:
 
 ```bash
 python3 scripts/generate_gallery.py
@@ -73,19 +78,26 @@ Get a grid summary:
 python3 -m newton_fractal_lab.cli grid-report --power 5 --width 120 --height 120
 ```
 
+Scan several powers and render the summary figure:
+
+```bash
+python3 -m newton_fractal_lab.cli power-scan --power-min 2 --power-max 12 --width 100 --height 100 --output art/unity-power-scan.svg
+```
+
 ## Repo layout
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries
 - `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row
-- `newton_fractal_lab/cli.py`: render and reporting commands
-- `scripts/generate_gallery.py`: reproducible gallery build
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan
+- `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
+- `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
 - `tests/test_core.py`: small verification layer
 
 ## Next good questions
 
-- how do the basin shares drift as `n` increases?
 - what changes when the polynomial stops being `z^n - 1` and the roots stop being perfectly symmetric?
+- where is the cleanest way to add a slow-convergence heatmap without duplicating the basin view?
 - where do the slow-convergence filaments thicken or thin as the iteration budget changes?
 - what is the cleanest companion artifact for the critical set and derivative singularities?
 

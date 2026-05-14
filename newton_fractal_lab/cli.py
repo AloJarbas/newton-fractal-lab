@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, iterate_unity, sample_grid
-from .render import render_unity_svg
+from .core import basin_summary, iterate_unity, sample_grid, scan_unity_family
+from .render import render_power_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -31,6 +31,15 @@ def main() -> None:
     grid_parser.add_argument("--width", type=int, default=120)
     grid_parser.add_argument("--height", type=int, default=120)
     grid_parser.add_argument("--max-iter", type=int, default=40)
+
+    scan_parser = subparsers.add_parser("power-scan", help="scan several powers and optionally render a summary SVG")
+    scan_parser.add_argument("--power-min", type=int, required=True)
+    scan_parser.add_argument("--power-max", type=int, required=True)
+    scan_parser.add_argument("--width", type=int, default=120)
+    scan_parser.add_argument("--height", type=int, default=120)
+    scan_parser.add_argument("--max-iter", type=int, default=40)
+    scan_parser.add_argument("--output", type=Path, default=None)
+    scan_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -58,6 +67,30 @@ def main() -> None:
             "root_index": result.root_index,
             "residual": result.residual,
         }
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "power-scan":
+        rows = scan_unity_family(
+            args.power_min,
+            args.power_max,
+            width=args.width,
+            height=args.height,
+            max_iter=args.max_iter,
+        )
+        if args.output is not None:
+            render_power_scan_svg(rows, output=args.output, title=args.title)
+        payload = [
+            {
+                "power": row.power,
+                "mean_iterations": round(row.mean_iterations, 6),
+                "converged_fraction": round(row.converged_fraction, 6),
+                "stalled_fraction": round(row.stalled_fraction, 6),
+                "min_share": round(row.min_share, 6),
+                "max_share": round(row.max_share, 6),
+            }
+            for row in rows
+        ]
         print(json.dumps(payload, indent=2))
         return
 

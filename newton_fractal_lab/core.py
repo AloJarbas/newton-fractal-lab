@@ -31,6 +31,16 @@ class BasinStats:
         return self.width * self.height
 
 
+@dataclass(frozen=True)
+class PowerScanRow:
+    power: int
+    mean_iterations: float
+    converged_fraction: float
+    stalled_fraction: float
+    min_share: float
+    max_share: float
+
+
 def unity_roots(power: int) -> list[complex]:
     if power < 2:
         raise ValueError("power must be at least 2")
@@ -121,6 +131,36 @@ def basin_summary(power: int, width: int, height: int, samples: list[NewtonResul
         mean_iterations=mean_iterations,
         basin_counts=tuple(basin_counts),
     )
+
+
+def scan_unity_family(
+    power_min: int,
+    power_max: int,
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 40,
+) -> list[PowerScanRow]:
+    if power_min > power_max:
+        raise ValueError("power_min must be less than or equal to power_max")
+
+    rows: list[PowerScanRow] = []
+    total_points = width * height
+    for power in range(power_min, power_max + 1):
+        samples = sample_grid(power, width, height, max_iter=max_iter)
+        stats = basin_summary(power, width, height, samples)
+        shares = [count / total_points for count in stats.basin_counts]
+        rows.append(
+            PowerScanRow(
+                power=power,
+                mean_iterations=stats.mean_iterations,
+                converged_fraction=stats.converged_points / total_points,
+                stalled_fraction=stats.stalled_points / total_points,
+                min_share=min(shares),
+                max_share=max(shares),
+            )
+        )
+    return rows
 
 
 def _nearest_root_index(z: complex, roots: list[complex]) -> int:
