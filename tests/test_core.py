@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import math
+import unittest
+
+from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, unity_roots
+
+
+class NewtonFractalTests(unittest.TestCase):
+    def test_unity_roots_have_unit_magnitude(self) -> None:
+        roots = unity_roots(5)
+        self.assertEqual(len(roots), 5)
+        for root in roots:
+            self.assertAlmostEqual(abs(root), 1.0, places=9)
+
+    def test_iteration_converges_to_real_root_for_simple_start(self) -> None:
+        result = iterate_unity(complex(0.9, 0.1), 3)
+        self.assertTrue(result.converged)
+        self.assertEqual(result.root_index, 0)
+        self.assertLess(result.residual, 1e-8)
+
+    def test_zero_start_stalls_for_unity_family(self) -> None:
+        result = iterate_unity(0j, 4)
+        self.assertTrue(result.stalled)
+        self.assertFalse(result.converged)
+        self.assertIsNone(result.root_index)
+
+    def test_grid_summary_counts_match(self) -> None:
+        width = 18
+        height = 18
+        samples = sample_grid(3, width, height, max_iter=30)
+        stats = basin_summary(3, width, height, samples)
+        self.assertEqual(sum(stats.basin_counts) + stats.stalled_points, width * height)
+        self.assertGreater(stats.converged_points, 0)
+        self.assertGreater(stats.mean_iterations, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
