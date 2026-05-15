@@ -3,8 +3,11 @@ from __future__ import annotations
 import colorsys
 from html import escape
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
-from .core import PowerScanRow, RadiusBandRow, basin_summary, sample_grid, unity_roots
+from .core import IterationHistogram, PowerScanRow, RadiusBandRow, basin_summary, sample_grid, unity_roots
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -345,6 +348,169 @@ def render_radius_scan_svg(
     lines.append('</svg>')
 
     output.write_text("\n".join(lines) + "\n")
+
+
+def render_iteration_histograms_svg(
+    histograms: list[IterationHistogram],
+    *,
+    output: str | Path,
+    title: str | None = None,
+) -> None:
+    if not histograms:
+        raise ValueError("histograms must not be empty")
+
+    ordered = sorted(histograms, key=lambda row: row.power)
+    if len(ordered) > 4:
+        raise ValueError("at most four histograms fit in the current layout")
+
+    width = 1160
+    height = 980
+    outer_left = 52
+    outer_top = 118
+    panel_gap_x = 36
+    panel_gap_y = 44
+    panel_w = 500
+    panel_h = 290
+    bar_pad = 28
+    max_fraction = max(
+        max(
+            max(count / histogram.total_points for count in histogram.converged_counts),
+            histogram.tail_fraction(20),
+            (histogram.stalled_count + histogram.unresolved_count) / histogram.total_points,
+        )
+        for histogram in ordered
+    )
+    max_fraction = max(max_fraction, 0.02)
+
+    def panel_origin(index: int) -> tuple[float, float]:
+        row = index // 2
+        col = index % 2
+        return (
+            outer_left + col * (panel_w + panel_gap_x),
+            outer_top + row * (panel_h + panel_gap_y),
+        )
+
+    def x_for(panel_left: float, histogram: IterationHistogram, value: int) -> float:
+        inner_w = panel_w - 2 * bar_pad - 96
+        if histogram.max_iter <= 0:
+            return panel_left + bar_pad + inner_w / 2.0
+        return panel_left + bar_pad + value / histogram.max_iter * inner_w
+
+    def y_for(panel_top: float, fraction: float) -> float:
+        inner_h = panel_h - 86
+        return panel_top + panel_h - 34 - fraction / max_fraction * inner_h
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="fastBar" x1="0" y1="1" x2="0" y2="0">',
+        '    <stop offset="0%" stop-color="#2563eb"/>',
+        '    <stop offset="100%" stop-color="#93c5fd"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateBar" x1="0" y1="1" x2="0" y2="0">',
+        '    <stop offset="0%" stop-color="#ea580c"/>',
+        '    <stop offset="100%" stop-color="#fdba74"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{outer_left}" y="50" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Slow-convergence histograms")}</text>',
+        '<text x="52" y="76" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">Each panel shows exact convergence-step fractions on the same square grid. Orange and white bars summarize the late tail and cutoff misses.</text>',
+    ]
+
+    for idx, histogram in enumerate(ordered):
+        left, top = panel_origin(idx)
+        inner_top = top + 52
+        inner_bottom = top + panel_h - 34
+        late_fraction = histogram.tail_fraction(20)
+        unresolved_fraction = (histogram.stalled_count + histogram.unresolved_count) / histogram.total_points
+        lines.append(f'<rect x="{left}" y="{top}" width="{panel_w}" height="{panel_h}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<text x="{left + 18}" y="{top + 30}" fill="#e5eefc" font-size="20" font-family="Helvetica, Arial, sans-serif" font-weight="700">z^{histogram.power} - 1</text>')
+        lines.append(f'<text x="{left + 18}" y="{top + 50}" fill="#9ec5ff" font-size="13" font-family="Helvetica, Arial, sans-serif">max iter {histogram.max_iter}, sampled square {histogram.total_points} starts</text>')
+
+        for tick in range(5):
+            frac = max_fraction * tick / 4.0
+            y = y_for(top, frac)
+            lines.append(f'<line x1="{left + bar_pad}" y1="{y:.2f}" x2="{left + panel_w - bar_pad}" y2="{y:.2f}" stroke="#16202f" stroke-width="1"/>')
+            lines.append(f'<text x="{left + bar_pad - 10}" y="{y + 4:.2f}" fill="#94a3b8" font-size="11" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{frac:.2%}</text>')
+
+        for tick in range(0, histogram.max_iter + 1, 10):
+            x = x_for(left, histogram, tick)
+            lines.append(f'<line x1="{x:.2f}" y1="{inner_top}" x2="{x:.2f}" y2="{inner_bottom}" stroke="#1f2937" stroke-width="1"/>')
+            lines.append(f'<text x="{x:.2f}" y="{top + panel_h - 12}" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{tick}</text>')
+
+        plot_width = panel_w - 2 * bar_pad - 96
+        bar_width = plot_width / (histogram.max_iter + 1)
+        for step, count in enumerate(histogram.converged_counts):
+            fraction = count / histogram.total_points
+            if fraction <= 0.0:
+                continue
+            x = left + bar_pad + step * bar_width
+            y = y_for(top, fraction)
+            fill = 'url(#lateBar)' if step >= 20 else 'url(#fastBar)'
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{max(bar_width - 0.5, 0.8):.2f}" height="{inner_bottom - y:.2f}" fill="{fill}" opacity="0.95"/>')
+
+        indicator_left = left + bar_pad + plot_width + 22
+        late_y = y_for(top, late_fraction)
+        unresolved_y = y_for(top, unresolved_fraction)
+        lines.append(f'<rect x="{indicator_left:.2f}" y="{late_y:.2f}" width="16" height="{inner_bottom - late_y:.2f}" rx="4" fill="#f59e0b" opacity="0.95"/>')
+        lines.append(f'<rect x="{indicator_left + 34:.2f}" y="{unresolved_y:.2f}" width="16" height="{inner_bottom - unresolved_y:.2f}" rx="4" fill="#f8fafc" opacity="0.95"/>')
+        lines.append(
+            _paragraph(
+                left + 18,
+                top + 74,
+                [
+                    f'late tail: {late_fraction:.1%}',
+                    f'unresolved at cutoff: {unresolved_fraction:.1%}',
+                ],
+                fill='#cbd5e1',
+                font_size=12,
+                line_height=16,
+            )
+        )
+
+    legend_y = 860
+    lines.append(f'<rect x="{outer_left}" y="{legend_y - 26}" width="{2 * panel_w + panel_gap_x}" height="70" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(_paragraph(outer_left + 18, legend_y, ['Blue bars: exact convergence fraction at a given iteration count.', 'Orange bars inside each histogram: late tail beginning at 20 iterations. White bar: stalled or unresolved at the current cutoff.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def export_png_from_svg(svg_path: str | Path, png_path: str | Path, *, size: int = 1800, dpi: int = 300) -> bool:
+    svg_file = Path(svg_path).resolve()
+    png_file = Path(png_path).resolve()
+    qlmanage = shutil.which('qlmanage')
+    if qlmanage is None:
+        return False
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(
+            [qlmanage, '-t', '-s', str(size), '-o', tmpdir, str(svg_file)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        generated = Path(tmpdir) / f'{svg_file.name}.png'
+        if not generated.exists():
+            raise FileNotFoundError(f'Quick Look did not generate {generated}')
+        png_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(generated, png_file)
+
+    sips = shutil.which('sips')
+    if sips is not None:
+        subprocess.run(
+            [sips, '--setProperty', 'dpiWidth', str(dpi), '--setProperty', 'dpiHeight', str(dpi), str(png_file)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    return True
 
 
 def _fill_for(sample, power: int, max_iter: int) -> str:

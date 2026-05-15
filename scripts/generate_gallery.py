@@ -7,8 +7,8 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.render import render_power_scan_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from newton_fractal_lab.render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -17,6 +17,7 @@ CASES = [3, 4, 5]
 SCAN_MIN = 2
 SCAN_MAX = 12
 RADIUS_POWERS = [3, 6, 9, 12]
+HISTOGRAM_POWERS = [3, 6, 9, 12]
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -153,6 +154,66 @@ def main() -> None:
     )
 
     (REPORTS / "critical-structure.md").write_text("\n".join(radius_lines) + "\n")
+
+    histograms = [iteration_histogram(power, width=120, height=120, max_iter=40) for power in HISTOGRAM_POWERS]
+    histogram_svg = ART / "slow-convergence-histograms.svg"
+    histogram_png = ART / "slow-convergence-histograms.png"
+    render_iteration_histograms_svg(histograms, output=histogram_svg)
+    export_png_from_svg(histogram_svg, histogram_png, size=1800, dpi=300)
+
+    histogram_lines = [
+        "# Slow-convergence histograms",
+        "",
+        "This report asks a complementary question to the basin gallery: not just where points go, but how much of the sampled square settles fast, late, or not at all under the current iteration budget.",
+        "",
+        "The figure bins exact convergence counts on the same square grid for several powers in the unity family.",
+        "",
+        "## Main read",
+        "",
+    ]
+
+    heaviest_tail = max(histograms, key=lambda row: row.tail_fraction(20))
+    weakest_cutoff = max(histograms, key=lambda row: (row.stalled_count + row.unresolved_count) / row.total_points)
+    histogram_lines.append(
+        f"- the heaviest late tail here is `z^{heaviest_tail.power} - 1`, where {heaviest_tail.tail_fraction(20):.1%} of the sampled square still needs at least 20 steps or misses the cutoff entirely"
+    )
+    histogram_lines.append(
+        f"- the hardest finite-budget case here is `z^{weakest_cutoff.power} - 1`, where {(weakest_cutoff.stalled_count + weakest_cutoff.unresolved_count) / weakest_cutoff.total_points:.1%} of starts are still unresolved at 40 iterations"
+    )
+    histogram_lines.append(
+        "- lower powers still have boundary tails, but the mass sits earlier in the histogram, which is why the panels look tighter and more left-loaded"
+    )
+    histogram_lines.append("")
+    histogram_lines.append("## Per-power tail summary")
+    histogram_lines.append("")
+
+    def bucket_fraction(histogram, left, right):
+        return sum(histogram.converged_counts[left:right]) / histogram.total_points
+
+    for histogram in histograms:
+        unresolved_fraction = (histogram.stalled_count + histogram.unresolved_count) / histogram.total_points
+        histogram_lines.append(f"### z^{histogram.power} - 1")
+        histogram_lines.append("")
+        histogram_lines.append(f"- fast settle (0-4 steps): {bucket_fraction(histogram, 0, 5):.1%}")
+        histogram_lines.append(f"- middle settle (5-9 steps): {bucket_fraction(histogram, 5, 10):.1%}")
+        histogram_lines.append(f"- slow settle (10-19 steps): {bucket_fraction(histogram, 10, 20):.1%}")
+        histogram_lines.append(f"- late tail (20-40 steps): {bucket_fraction(histogram, 20, histogram.max_iter + 1):.1%}")
+        histogram_lines.append(f"- unresolved at cutoff: {unresolved_fraction:.1%}")
+        histogram_lines.append("")
+
+    histogram_lines.extend(
+        [
+            "## Reading",
+            "",
+            "- exact histograms make the boundary problem more concrete: the issue is not just that some pixels look dark, but that a larger share of the square gets pushed into a long iteration tail as the power rises",
+            "- the unresolved bar is a reminder that the current cutoff matters; some starts are not truly divergent, they are just too slow for the present budget",
+            "- this is still a sampled public summary, not a theorem about every point on the basin boundary",
+            "",
+            "Open `art/slow-convergence-histograms.svg`, `art/slow-convergence-histograms.png`, and `notebooks/slow_convergence_histograms.ipynb` next.",
+        ]
+    )
+
+    (REPORTS / "slow-convergence.md").write_text("\n".join(histogram_lines) + "\n")
 
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
     print("generated gallery, scan figures, and reports")

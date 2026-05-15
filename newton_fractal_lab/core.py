@@ -52,6 +52,25 @@ class RadiusBandRow:
     stalled_fraction: float
 
 
+@dataclass(frozen=True)
+class IterationHistogram:
+    power: int
+    max_iter: int
+    total_points: int
+    converged_counts: tuple[int, ...]
+    stalled_count: int
+    unresolved_count: int
+
+    def cumulative_converged_fraction(self, iterations: int) -> float:
+        clipped = max(0, min(iterations, self.max_iter))
+        return sum(self.converged_counts[: clipped + 1]) / self.total_points
+
+    def tail_fraction(self, min_iterations: int) -> float:
+        clipped = max(0, min(min_iterations, self.max_iter))
+        tail = sum(self.converged_counts[clipped:]) + self.stalled_count + self.unresolved_count
+        return tail / self.total_points
+
+
 def unity_roots(power: int) -> list[complex]:
     if power < 2:
         raise ValueError("power must be at least 2")
@@ -241,6 +260,47 @@ def scan_radius_bands(
             )
         )
     return rows
+
+
+def iteration_histogram(
+    power: int,
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 40,
+    x_min: float = -1.6,
+    x_max: float = 1.6,
+    y_min: float = -1.6,
+    y_max: float = 1.6,
+) -> IterationHistogram:
+    samples = sample_grid(
+        power,
+        width,
+        height,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+        max_iter=max_iter,
+    )
+    counts = [0] * (max_iter + 1)
+    stalled_count = 0
+    unresolved_count = 0
+    for sample in samples:
+        if sample.converged:
+            counts[min(sample.iterations, max_iter)] += 1
+        elif sample.stalled:
+            stalled_count += 1
+        else:
+            unresolved_count += 1
+    return IterationHistogram(
+        power=power,
+        max_iter=max_iter,
+        total_points=width * height,
+        converged_counts=tuple(counts),
+        stalled_count=stalled_count,
+        unresolved_count=unresolved_count,
+    )
 
 
 def _nearest_root_index(z: complex, roots: list[complex]) -> int:

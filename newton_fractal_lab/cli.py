@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family
-from .render import render_power_scan_svg, render_radius_scan_svg, render_unity_svg
+from .core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from .render import render_iteration_histograms_svg, render_power_scan_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -49,6 +49,14 @@ def main() -> None:
     radius_parser.add_argument("--bands", type=int, default=12)
     radius_parser.add_argument("--output", type=Path, default=None)
     radius_parser.add_argument("--title", type=str, default=None)
+
+    hist_parser = subparsers.add_parser("iteration-hist", help="compare exact convergence-step histograms across several powers")
+    hist_parser.add_argument("--powers", type=str, required=True, help="comma-separated powers, e.g. 3,6,9,12")
+    hist_parser.add_argument("--width", type=int, default=120)
+    hist_parser.add_argument("--height", type=int, default=120)
+    hist_parser.add_argument("--max-iter", type=int, default=40)
+    hist_parser.add_argument("--output", type=Path, default=None)
+    hist_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -131,6 +139,33 @@ def main() -> None:
             ]
             for power, rows in profiles.items()
         }
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "iteration-hist":
+        powers = [int(chunk.strip()) for chunk in args.powers.split(",") if chunk.strip()]
+        histograms = [
+            iteration_histogram(
+                power,
+                width=args.width,
+                height=args.height,
+                max_iter=args.max_iter,
+            )
+            for power in powers
+        ]
+        if args.output is not None:
+            render_iteration_histograms_svg(histograms, output=args.output, title=args.title)
+        payload = [
+            {
+                "power": histogram.power,
+                "max_iter": histogram.max_iter,
+                "total_points": histogram.total_points,
+                "converged_counts": list(histogram.converged_counts),
+                "stalled_count": histogram.stalled_count,
+                "unresolved_count": histogram.unresolved_count,
+            }
+            for histogram in histograms
+        ]
         print(json.dumps(payload, indent=2))
         return
 

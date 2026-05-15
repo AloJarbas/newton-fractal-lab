@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
+from newton_fractal_lab.core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -59,6 +59,19 @@ class NewtonFractalTests(unittest.TestCase):
         easy = iterate_unity(complex(0.9, 0.1), 8)
         self.assertGreater(hard.iterations, easy.iterations)
         self.assertTrue(easy.converged)
+
+    def test_iteration_histogram_conserves_grid(self) -> None:
+        histogram = iteration_histogram(6, width=24, height=24, max_iter=30)
+        self.assertEqual(len(histogram.converged_counts), 31)
+        self.assertEqual(
+            sum(histogram.converged_counts) + histogram.stalled_count + histogram.unresolved_count,
+            histogram.total_points,
+        )
+
+    def test_higher_power_has_heavier_late_tail(self) -> None:
+        low = iteration_histogram(3, width=28, height=28, max_iter=30)
+        high = iteration_histogram(10, width=28, height=28, max_iter=30)
+        self.assertGreater(high.tail_fraction(15), low.tail_fraction(15))
 
 
 if __name__ == "__main__":

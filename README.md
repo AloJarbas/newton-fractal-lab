@@ -13,7 +13,8 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 - generated gallery for `z^3 - 1`, `z^4 - 1`, and `z^5 - 1`
 - a generated power-scan figure that tracks how convergence and basin-share spread drift as `n` increases
 - a generated critical-radius scan that makes the derivative singularity at `z = 0` visible as a real convergence problem instead of a throwaway caveat
-- a companion notebook on critical structure and why the center gets dangerous as the power rises
+- a generated slow-convergence histogram figure that shows how much of the sampled square settles early, late, or not at all under one fixed iteration budget
+- companion notebooks on critical structure and on the long iteration tail that thickens as the power rises
 - small tests that check roots, convergence, grid accounting, and the scan layer
 
 ## Gallery
@@ -37,6 +38,10 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 ### Critical-radius scan
 
 ![Critical-radius scan](art/critical-radius-scan.svg)
+
+### Slow-convergence histograms
+
+![Slow-convergence histograms](art/slow-convergence-histograms.png)
 
 ## Why this repo is worth opening
 
@@ -90,6 +95,12 @@ Scan several powers and render the summary figure:
 python3 -m newton_fractal_lab.cli power-scan --power-min 2 --power-max 12 --width 100 --height 100 --output art/unity-power-scan.svg
 ```
 
+Compare slow-convergence histograms across several powers:
+
+```bash
+python3 -m newton_fractal_lab.cli iteration-hist --powers 3,6,9,12 --width 120 --height 120 --max-iter 40 --output art/slow-convergence-histograms.svg
+```
+
 ## Repo layout
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries
@@ -99,14 +110,16 @@ python3 -m newton_fractal_lab.cli power-scan --power-min 2 --power-max 12 --widt
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
 - `reports/critical-structure.md`: generated note on where the derivative singularity shows up most clearly on the sampled square
+- `reports/slow-convergence.md`: generated note on how the long iteration tail thickens across the family
 - `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
+- `notebooks/slow_convergence_histograms.ipynb`: companion notebook on exact convergence-step counts, cumulative fractions, and cutoff caveats
 - `tests/test_core.py`: small verification layer
 
 ## Next good questions
 
 - what changes when the polynomial stops being `z^n - 1` and the roots stop being perfectly symmetric?
-- where is the cleanest way to add a slow-convergence heatmap without duplicating the basin view?
-- where do the slow-convergence filaments thicken or thin as the iteration budget changes?
+- how much of the slow tail disappears if the iteration budget doubles, and how much is true geometric stubbornness?
+- where do the late-tail filaments thicken or thin as the cutoff changes?
 - what changes first when the symmetry is broken by one carefully chosen asymmetric polynomial?
 
 That is enough to make this a real lab instead of just a pretty image dump.
