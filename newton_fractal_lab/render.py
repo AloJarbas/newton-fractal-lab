@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import colorsys
+from html import escape
 from pathlib import Path
 
 from .core import PowerScanRow, basin_summary, sample_grid, unity_roots
+
+
+def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
+    tspans = [f'<tspan x="{x:.1f}" dy="0">{escape(lines[0])}</tspan>']
+    tspans.extend(f'<tspan x="{x:.1f}" dy="{line_height}">{escape(line)}</tspan>' for line in lines[1:])
+    return f'<text x="{x:.1f}" y="{y:.1f}" fill="{fill}" font-size="{font_size}" font-family="Helvetica, Arial, sans-serif" font-weight="{weight}">{"".join(tspans)}</text>'
 
 
 def render_unity_svg(
@@ -22,13 +29,15 @@ def render_unity_svg(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    frame_left = 36
-    frame_top = 90
-    frame_size = 640
+    frame_left = 40
+    frame_top = 110
+    frame_size = 580
     cell_w = frame_size / width
     cell_h = frame_size / height
-    svg_width = 720
-    svg_height = 790
+    svg_width = 980
+    svg_height = 780
+    side_x = frame_left + frame_size + 32
+    side_w = svg_width - side_x - 40
 
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_width} {svg_height}" width="{svg_width}" height="{svg_height}">',
@@ -39,9 +48,22 @@ def render_unity_svg(
         '  </linearGradient>',
         '</defs>',
         '<rect width="100%" height="100%" fill="url(#bg)"/>',
-        f'<text x="36" y="48" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or f"Newton fractal for z^{power} - 1")}</text>',
-        '<text x="36" y="74" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">Each basin shows which root Newton iteration finds. Darker cells converged faster.</text>',
+        f'<text x="40" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or f"Newton fractal for z^{power} - 1")}</text>',
+        '<text x="40" y="80" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">Each basin shows which root Newton iteration finds. Darker cells converged faster.</text>',
         f'<rect x="{frame_left}" y="{frame_top}" width="{frame_size}" height="{frame_size}" rx="16" fill="#020617" stroke="#2b3752" stroke-width="1.5"/>',
+        f'<rect x="{side_x}" y="{frame_top}" width="{side_w}" height="{frame_size}" rx="18" fill="#0b1320" stroke="#334155" stroke-width="1.4"/>',
+        f'<text x="{side_x + 20}" y="{frame_top + 34}" fill="#e5eefc" font-size="20" font-family="Helvetica, Arial, sans-serif" font-weight="700">Root legend</text>',
+        _paragraph(
+            side_x + 20,
+            frame_top + 62,
+            [
+                'Same square grid over the complex plane.',
+                f'{power} competing roots split the plane into basins.',
+            ],
+            fill='#9ec5ff',
+            font_size=14,
+            line_height=18,
+        ),
     ]
 
     for row in range(height):
@@ -64,16 +86,40 @@ def render_unity_svg(
     lines.append('<g fill="#dbeafe" font-family="Helvetica, Arial, sans-serif">')
     for idx, root in enumerate(roots):
         hue = idx / power
-        swatch_y = 748 - (power - idx - 1) * 22
-        lines.append(f'<rect x="500" y="{swatch_y - 12}" width="16" height="16" rx="4" fill="{_root_hex(hue, 0.88)}"/>')
+        swatch_y = frame_top + 120 + idx * 30
+        lines.append(f'<rect x="{side_x + 20}" y="{swatch_y - 12}" width="18" height="18" rx="4" fill="{_root_hex(hue, 0.88)}"/>')
         lines.append(
-            f'<text x="524" y="{swatch_y}" font-size="13">root {idx}: {_fmt_complex(root)}</text>'
+            f'<text x="{side_x + 48}" y="{swatch_y + 1}" font-size="13">root {idx}: {_fmt_complex(root)}</text>'
         )
     lines.append('</g>')
 
+    stats_y = frame_top + frame_size - 118
+    lines.append(f'<text x="{side_x + 20}" y="{stats_y}" fill="#e5eefc" font-size="18" font-family="Helvetica, Arial, sans-serif" font-weight="700">Grid summary</text>')
     lines.append(
-        f'<text x="36" y="754" fill="#cbd5e1" font-size="14" font-family="Helvetica, Arial, sans-serif">grid: {width}×{height} · mean iterations: {stats.mean_iterations:.2f} · converged: {stats.converged_points}/{stats.total_points}</text>'
+        _paragraph(
+            side_x + 20,
+            stats_y + 26,
+            [
+                f'grid: {width}×{height}',
+                f'mean iterations: {stats.mean_iterations:.2f}',
+                f'converged: {stats.converged_points}/{stats.total_points}',
+            ],
+            fill='#cbd5e1',
+            font_size=14,
+            line_height=20,
+        )
     )
+    lines.append(
+        _paragraph(
+            side_x + 20,
+            frame_top + frame_size - 42,
+            ['GitHub preview note: the legend now lives beside the basin map,', 'so labels stay readable without covering the fractal itself.'],
+            fill='#93c5fd',
+            font_size=13,
+            line_height=18,
+        )
+    )
+
     lines.append('</svg>')
 
     output.write_text('\n'.join(lines) + '\n')
@@ -100,11 +146,11 @@ def render_power_scan_svg(
     output.parent.mkdir(parents=True, exist_ok=True)
 
     width = 920
-    height = 760
+    height = 820
     left = 72
-    right = 34
-    top = 100
-    panel_gap = 46
+    right = 40
+    top = 108
+    panel_gap = 52
     panel_height = 230
     panel_width = width - left - right
     powers = [row.power for row in rows]
@@ -178,12 +224,14 @@ def render_power_scan_svg(
     lines.append(f'<polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="{conv_points}"/>')
     lines.append(f'<polyline fill="none" stroke="#f8fafc" stroke-width="1.8" stroke-dasharray="6 5" points="{ideal_points}"/>')
 
-    legend_y = height - 72
+    legend_y = height - 116
+    legend_w = panel_width
+    lines.append(f'<rect x="{left}" y="{legend_y - 26}" width="{legend_w}" height="70" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
     lines.append('<g font-family="Helvetica, Arial, sans-serif" font-size="13">')
-    lines.append(f'<line x1="{left}" y1="{legend_y}" x2="{left + 28}" y2="{legend_y}" stroke="#60a5fa" stroke-width="3"/><text x="{left + 36}" y="{legend_y + 4}" fill="#dbeafe">mean iterations</text>')
-    lines.append(f'<line x1="{left + 180}" y1="{legend_y}" x2="{left + 208}" y2="{legend_y}" stroke="#38bdf8" stroke-width="2.5"/><text x="{left + 216}" y="{legend_y + 4}" fill="#dbeafe">converged fraction</text>')
-    lines.append(f'<line x1="{left + 398}" y1="{legend_y}" x2="{left + 426}" y2="{legend_y}" stroke="#f8fafc" stroke-width="1.8" stroke-dasharray="6 5"/><text x="{left + 434}" y="{legend_y + 4}" fill="#dbeafe">ideal equal share 1/n</text>')
-    lines.append(f'<line x1="{left + 630}" y1="{legend_y - 8}" x2="{left + 630}" y2="{legend_y + 8}" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/><text x="{left + 644}" y="{legend_y + 4}" fill="#dbeafe">min to max basin share</text>')
+    lines.append(f'<line x1="{left + 20}" y1="{legend_y}" x2="{left + 48}" y2="{legend_y}" stroke="#60a5fa" stroke-width="3"/><text x="{left + 56}" y="{legend_y + 4}" fill="#dbeafe">mean iterations</text>')
+    lines.append(f'<line x1="{left + 260}" y1="{legend_y}" x2="{left + 288}" y2="{legend_y}" stroke="#38bdf8" stroke-width="2.5"/><text x="{left + 296}" y="{legend_y + 4}" fill="#dbeafe">converged fraction</text>')
+    lines.append(f'<line x1="{left + 20}" y1="{legend_y + 26}" x2="{left + 48}" y2="{legend_y + 26}" stroke="#f8fafc" stroke-width="1.8" stroke-dasharray="6 5"/><text x="{left + 56}" y="{legend_y + 30}" fill="#dbeafe">ideal equal share 1/n</text>')
+    lines.append(f'<line x1="{left + 260}" y1="{legend_y + 18}" x2="{left + 260}" y2="{legend_y + 34}" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/><text x="{left + 274}" y="{legend_y + 30}" fill="#dbeafe">min to max basin share</text>')
     lines.append('</g>')
     lines.append('</svg>')
 
