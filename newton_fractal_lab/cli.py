@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, iterate_unity, sample_grid, scan_unity_family
-from .render import render_power_scan_svg, render_unity_svg
+from .core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family
+from .render import render_power_scan_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -40,6 +40,15 @@ def main() -> None:
     scan_parser.add_argument("--max-iter", type=int, default=40)
     scan_parser.add_argument("--output", type=Path, default=None)
     scan_parser.add_argument("--title", type=str, default=None)
+
+    radius_parser = subparsers.add_parser("radius-scan", help="compare convergence by start radius across several powers")
+    radius_parser.add_argument("--powers", type=str, required=True, help="comma-separated powers, e.g. 3,6,9,12")
+    radius_parser.add_argument("--width", type=int, default=120)
+    radius_parser.add_argument("--height", type=int, default=120)
+    radius_parser.add_argument("--max-iter", type=int, default=40)
+    radius_parser.add_argument("--bands", type=int, default=12)
+    radius_parser.add_argument("--output", type=Path, default=None)
+    radius_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -91,6 +100,37 @@ def main() -> None:
             }
             for row in rows
         ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "radius-scan":
+        powers = [int(chunk.strip()) for chunk in args.powers.split(",") if chunk.strip()]
+        profiles = {
+            power: scan_radius_bands(
+                power,
+                width=args.width,
+                height=args.height,
+                max_iter=args.max_iter,
+                bands=args.bands,
+            )
+            for power in powers
+        }
+        if args.output is not None:
+            render_radius_scan_svg(profiles, output=args.output, title=args.title)
+        payload = {
+            str(power): [
+                {
+                    "radius_min": round(row.radius_min, 6),
+                    "radius_max": round(row.radius_max, 6),
+                    "sample_count": row.sample_count,
+                    "mean_iterations": round(row.mean_iterations, 6),
+                    "converged_fraction": round(row.converged_fraction, 6),
+                    "stalled_fraction": round(row.stalled_fraction, 6),
+                }
+                for row in rows
+            ]
+            for power, rows in profiles.items()
+        }
         print(json.dumps(payload, indent=2))
         return
 

@@ -12,6 +12,8 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 - CLI for single-point reports, grid summaries, and figure generation
 - generated gallery for `z^3 - 1`, `z^4 - 1`, and `z^5 - 1`
 - a generated power-scan figure that tracks how convergence and basin-share spread drift as `n` increases
+- a generated critical-radius scan that makes the derivative singularity at `z = 0` visible as a real convergence problem instead of a throwaway caveat
+- a companion notebook on critical structure and why the center gets dangerous as the power rises
 - small tests that check roots, convergence, grid accounting, and the scan layer
 
 ## Gallery
@@ -31,6 +33,10 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 ### Unity-family power scan
 
 ![Unity-family power scan](art/unity-power-scan.svg)
+
+### Critical-radius scan
+
+![Critical-radius scan](art/critical-radius-scan.svg)
 
 ## Why this repo is worth opening
 
@@ -87,11 +93,13 @@ python3 -m newton_fractal_lab.cli power-scan --power-min 2 --power-max 12 --widt
 ## Repo layout
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries
-- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row
-- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan
+- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan and the new radial critical-structure scan
 - `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
+- `reports/critical-structure.md`: generated note on where the derivative singularity shows up most clearly on the sampled square
+- `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
 - `tests/test_core.py`: small verification layer
 
 ## Next good questions
@@ -99,7 +107,7 @@ python3 -m newton_fractal_lab.cli power-scan --power-min 2 --power-max 12 --widt
 - what changes when the polynomial stops being `z^n - 1` and the roots stop being perfectly symmetric?
 - where is the cleanest way to add a slow-convergence heatmap without duplicating the basin view?
 - where do the slow-convergence filaments thicken or thin as the iteration budget changes?
-- what is the cleanest companion artifact for the critical set and derivative singularities?
+- what changes first when the symmetry is broken by one carefully chosen asymmetric polynomial?
 
 That is enough to make this a real lab instead of just a pretty image dump.
 

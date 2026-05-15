@@ -4,7 +4,7 @@ import colorsys
 from html import escape
 from pathlib import Path
 
-from .core import PowerScanRow, basin_summary, sample_grid, unity_roots
+from .core import PowerScanRow, RadiusBandRow, basin_summary, sample_grid, unity_roots
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -233,6 +233,115 @@ def render_power_scan_svg(
     lines.append(f'<line x1="{left + 20}" y1="{legend_y + 26}" x2="{left + 48}" y2="{legend_y + 26}" stroke="#f8fafc" stroke-width="1.8" stroke-dasharray="6 5"/><text x="{left + 56}" y="{legend_y + 30}" fill="#dbeafe">ideal equal share 1/n</text>')
     lines.append(f'<line x1="{left + 260}" y1="{legend_y + 18}" x2="{left + 260}" y2="{legend_y + 34}" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/><text x="{left + 274}" y="{legend_y + 30}" fill="#dbeafe">min to max basin share</text>')
     lines.append('</g>')
+    lines.append('</svg>')
+
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_radius_scan_svg(
+    profiles: dict[int, list[RadiusBandRow]],
+    *,
+    output: str | Path,
+    title: str | None = None,
+) -> None:
+    if not profiles:
+        raise ValueError("profiles must not be empty")
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    ordered_powers = sorted(profiles)
+    first_profile = profiles[ordered_powers[0]]
+    if not first_profile:
+        raise ValueError("profiles must contain non-empty band rows")
+    max_radius = max(row.radius_max for rows in profiles.values() for row in rows)
+    max_mean = max(row.mean_iterations for rows in profiles.values() for row in rows)
+
+    width = 1120
+    height = 880
+    left = 82
+    right = 42
+    top = 112
+    panel_gap = 60
+    panel_height = 250
+    panel_width = width - left - right
+
+    def x_for(radius: float) -> float:
+        return left + (radius / max_radius) * panel_width if max_radius > 0 else left + panel_width / 2.0
+
+    def y_for_mean(value: float) -> float:
+        return top + panel_height - (value / max_mean) * panel_height if max_mean > 0 else top + panel_height / 2.0
+
+    def y_for_frac(value: float) -> float:
+        panel_top = top + panel_height + panel_gap
+        return panel_top + panel_height - value * panel_height
+
+    colors = ["#60a5fa", "#f59e0b", "#34d399", "#f472b6", "#c084fc"]
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="48" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Critical-radius scan")}</text>',
+        '<text x="82" y="74" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">The derivative singularity at z = 0 does not fill the whole square equally. These radial bands show where convergence slows and where it stays reliable.</text>',
+    ]
+
+    panel_labels = [
+        (top, "mean iterations by start radius"),
+        (top + panel_height + panel_gap, "converged fraction by start radius"),
+    ]
+    for panel_top, label in panel_labels:
+        lines.append(f'<rect x="{left}" y="{panel_top}" width="{panel_width}" height="{panel_height}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<text x="{left + 18}" y="{panel_top + 28}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">{_escape(label)}</text>')
+        for tick in range(6):
+            radius = max_radius * tick / 5.0
+            x = x_for(radius)
+            lines.append(f'<line x1="{x:.2f}" y1="{panel_top + 40}" x2="{x:.2f}" y2="{panel_top + panel_height - 18}" stroke="#1f2937" stroke-width="1"/>')
+            lines.append(f'<text x="{x:.2f}" y="{panel_top + panel_height + 18}" fill="#94a3b8" font-size="12" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{radius:.2f}</text>')
+
+    for idx in range(5):
+        frac = idx / 4
+        mean_value = max_mean * frac
+        y = y_for_mean(mean_value)
+        lines.append(f'<line x1="{left}" y1="{y:.2f}" x2="{left + panel_width}" y2="{y:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{left - 12}" y="{y + 4:.2f}" fill="#94a3b8" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{mean_value:.1f}</text>')
+
+        frac_y = y_for_frac(frac)
+        lines.append(f'<line x1="{left}" y1="{frac_y:.2f}" x2="{left + panel_width}" y2="{frac_y:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{left - 12}" y="{frac_y + 4:.2f}" fill="#94a3b8" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{frac:.2f}</text>')
+
+    unit_x = x_for(1.0)
+    for panel_top, _ in panel_labels:
+        lines.append(f'<line x1="{unit_x:.2f}" y1="{panel_top + 40}" x2="{unit_x:.2f}" y2="{panel_top + panel_height - 18}" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="6 5" opacity="0.9"/>')
+    lines.append(f'<text x="{unit_x + 8:.2f}" y="{top + 54:.2f}" fill="#dbeafe" font-size="12" font-family="Helvetica, Arial, sans-serif">unit circle radius</text>')
+
+    for index, power in enumerate(ordered_powers):
+        rows = profiles[power]
+        color = colors[index % len(colors)]
+        mean_points = " ".join(f"{x_for((row.radius_min + row.radius_max) / 2.0):.2f},{y_for_mean(row.mean_iterations):.2f}" for row in rows)
+        frac_points = " ".join(f"{x_for((row.radius_min + row.radius_max) / 2.0):.2f},{y_for_frac(row.converged_fraction):.2f}" for row in rows)
+        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3" points="{mean_points}"/>')
+        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3" points="{frac_points}"/>')
+        for row in rows:
+            x = x_for((row.radius_min + row.radius_max) / 2.0)
+            lines.append(f'<circle cx="{x:.2f}" cy="{y_for_mean(row.mean_iterations):.2f}" r="4" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+            lines.append(f'<circle cx="{x:.2f}" cy="{y_for_frac(row.converged_fraction):.2f}" r="4" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+
+    legend_y = height - 126
+    lines.append(f'<rect x="{left}" y="{legend_y - 28}" width="{panel_width}" height="88" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_y - 2}" fill="#e5eefc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">Profiles</text>')
+    for index, power in enumerate(ordered_powers):
+        color = colors[index % len(colors)]
+        x = left + 20 + index * 170
+        y = legend_y + 22
+        lines.append(f'<line x1="{x}" y1="{y}" x2="{x + 30}" y2="{y}" stroke="{color}" stroke-width="3"/>')
+        lines.append(f'<text x="{x + 40}" y="{y + 4}" fill="#dbeafe" font-size="13" font-family="Helvetica, Arial, sans-serif">z^{power} - 1</text>')
+    lines.append(_paragraph(left + 18, legend_y + 48, ['Inner bands sit closest to the derivative singularity at z = 0.', 'Higher powers stay slow for longer before the profiles flatten near the outer square.'], fill='#9ec5ff', font_size=13, line_height=18))
     lines.append('</svg>')
 
     output.write_text("\n".join(lines) + "\n")

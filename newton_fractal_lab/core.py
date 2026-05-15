@@ -41,6 +41,17 @@ class PowerScanRow:
     max_share: float
 
 
+@dataclass(frozen=True)
+class RadiusBandRow:
+    power: int
+    radius_min: float
+    radius_max: float
+    sample_count: int
+    mean_iterations: float
+    converged_fraction: float
+    stalled_fraction: float
+
+
 def unity_roots(power: int) -> list[complex]:
     if power < 2:
         raise ValueError("power must be at least 2")
@@ -158,6 +169,75 @@ def scan_unity_family(
                 stalled_fraction=stats.stalled_points / total_points,
                 min_share=min(shares),
                 max_share=max(shares),
+            )
+        )
+    return rows
+
+
+def scan_radius_bands(
+    power: int,
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 40,
+    bands: int = 12,
+    x_min: float = -1.6,
+    x_max: float = 1.6,
+    y_min: float = -1.6,
+    y_max: float = 1.6,
+) -> list[RadiusBandRow]:
+    if bands < 1:
+        raise ValueError("bands must be at least 1")
+
+    samples = sample_grid(
+        power,
+        width,
+        height,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+        max_iter=max_iter,
+    )
+    max_radius = math.hypot(max(abs(x_min), abs(x_max)), max(abs(y_min), abs(y_max)))
+    step = max_radius / bands
+
+    buckets: list[list[NewtonResult]] = [[] for _ in range(bands)]
+    for sample in samples:
+        radius = abs(sample.start)
+        index = min(bands - 1, int(radius / step)) if step > 0.0 else 0
+        buckets[index].append(sample)
+
+    rows: list[RadiusBandRow] = []
+    for index, bucket in enumerate(buckets):
+        radius_min = index * step
+        radius_max = (index + 1) * step
+        if not bucket:
+            rows.append(
+                RadiusBandRow(
+                    power=power,
+                    radius_min=radius_min,
+                    radius_max=radius_max,
+                    sample_count=0,
+                    mean_iterations=0.0,
+                    converged_fraction=0.0,
+                    stalled_fraction=0.0,
+                )
+            )
+            continue
+
+        converged = sum(1 for sample in bucket if sample.converged)
+        stalled = sum(1 for sample in bucket if sample.stalled)
+        mean_iterations = sum(sample.iterations for sample in bucket) / len(bucket)
+        rows.append(
+            RadiusBandRow(
+                power=power,
+                radius_min=radius_min,
+                radius_max=radius_max,
+                sample_count=len(bucket),
+                mean_iterations=mean_iterations,
+                converged_fraction=converged / len(bucket),
+                stalled_fraction=stalled / len(bucket),
             )
         )
     return rows

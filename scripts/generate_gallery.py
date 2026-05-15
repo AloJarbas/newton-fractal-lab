@@ -7,8 +7,8 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_unity_family
-from newton_fractal_lab.render import render_power_scan_svg, render_unity_svg
+from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family
+from newton_fractal_lab.render import render_power_scan_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -16,6 +16,7 @@ REPORTS = REPO / "reports"
 CASES = [3, 4, 5]
 SCAN_MIN = 2
 SCAN_MAX = 12
+RADIUS_POWERS = [3, 6, 9, 12]
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -99,8 +100,62 @@ def main() -> None:
         scan_lines.append(f"- largest basin share on this grid: {row.max_share:.1%}")
         scan_lines.append("")
 
+    profiles = {power: scan_radius_bands(power, width=120, height=120, max_iter=40, bands=12) for power in RADIUS_POWERS}
+    render_radius_scan_svg(profiles, output=ART / "critical-radius-scan.svg")
+
+    radius_lines = [
+        "# Critical structure and radius scan",
+        "",
+        "This report asks a narrower question than the gallery: where does the derivative singularity at `z = 0` show up most clearly on the sampled square?",
+        "",
+        "For `f(z) = z^n - 1`, Newton's update is",
+        "",
+        "```text",
+        "N_n(z) = ((n - 1)/n) z + 1 / (n z^(n - 1))",
+        "```",
+        "",
+        "So the origin is not a root at all. It is the point where the derivative vanishes, and the inverse-power term makes the map violent near the center.",
+        "",
+        "The radial scan bins starting points by distance from the origin and compares four powers on the same square grid.",
+        "",
+    ]
+
+    for power in RADIUS_POWERS:
+        rows = profiles[power]
+        hardest = max(rows, key=lambda row: row.mean_iterations)
+        weakest = min(rows, key=lambda row: row.converged_fraction)
+        outer = rows[-1]
+        radius_lines.append(f"## z^{power} - 1")
+        radius_lines.append("")
+        radius_lines.append(
+            f"- slowest radial band: `{hardest.radius_min:.2f} ≤ |z₀| < {hardest.radius_max:.2f}` with mean iteration count {hardest.mean_iterations:.2f}"
+        )
+        radius_lines.append(
+            f"- weakest convergence band: `{weakest.radius_min:.2f} ≤ |z₀| < {weakest.radius_max:.2f}` with convergence fraction {weakest.converged_fraction:.1%}"
+        )
+        radius_lines.append(
+            f"- outermost band `{outer.radius_min:.2f} ≤ |z₀| < {outer.radius_max:.2f}` still converges at {outer.converged_fraction:.1%} with mean iteration count {outer.mean_iterations:.2f}"
+        )
+        radius_lines.append("")
+
+    radius_lines.extend(
+        [
+            "## Reading",
+            "",
+            "- the center is the trouble spot because `f'(z) = n z^(n-1)` collapses there, so Newton's correction term can explode instead of settling down",
+            "- higher powers keep a slow inner region for longer, which is why the mean-iteration profile lifts upward as `n` increases",
+            "- the outer square is not uniformly easy, but it is usually much calmer than the central bands on the same iteration budget",
+            "",
+            "This does not replace a full critical-orbit study. It is a cleaner public bridge between the basin pictures and the algebra behind them.",
+            "",
+            "Open `art/critical-radius-scan.svg` and `notebooks/critical_structure_unity_family.ipynb` next.",
+        ]
+    )
+
+    (REPORTS / "critical-structure.md").write_text("\n".join(radius_lines) + "\n")
+
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figure, and reports")
+    print("generated gallery, scan figures, and reports")
 
 
 if __name__ == "__main__":

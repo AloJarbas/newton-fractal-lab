@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_unity_family, unity_roots
+from newton_fractal_lab.core import basin_summary, iterate_unity, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -46,6 +46,19 @@ class NewtonFractalTests(unittest.TestCase):
             self.assertGreaterEqual(row.min_share, 0.0)
             self.assertLessEqual(row.max_share, 1.0)
             self.assertLessEqual(row.min_share, row.max_share)
+
+    def test_radius_scan_covers_entire_grid(self) -> None:
+        rows = scan_radius_bands(6, width=24, height=24, max_iter=30, bands=6)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(sum(row.sample_count for row in rows), 24 * 24)
+        for left, right in zip(rows, rows[1:]):
+            self.assertAlmostEqual(left.radius_max, right.radius_min, places=9)
+
+    def test_near_origin_is_harder_than_near_root_for_higher_power(self) -> None:
+        hard = iterate_unity(complex(0.1, 0.1), 8)
+        easy = iterate_unity(complex(0.9, 0.1), 8)
+        self.assertGreater(hard.iterations, easy.iterations)
+        self.assertTrue(easy.converged)
 
 
 if __name__ == "__main__":
