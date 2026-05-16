@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
-from .render import render_iteration_histograms_svg, render_power_scan_svg, render_radius_scan_svg, render_unity_svg
+from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from .render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -57,6 +57,17 @@ def main() -> None:
     hist_parser.add_argument("--max-iter", type=int, default=40)
     hist_parser.add_argument("--output", type=Path, default=None)
     hist_parser.add_argument("--title", type=str, default=None)
+
+    budget_parser = subparsers.add_parser("budget-radius-compare", help="compare radial convergence profiles at two iteration budgets")
+    budget_parser.add_argument("--powers", type=str, required=True, help="comma-separated powers, e.g. 3,6,9,12")
+    budget_parser.add_argument("--width", type=int, default=120)
+    budget_parser.add_argument("--height", type=int, default=120)
+    budget_parser.add_argument("--bands", type=int, default=12)
+    budget_parser.add_argument("--low-budget", type=int, default=40)
+    budget_parser.add_argument("--high-budget", type=int, default=80)
+    budget_parser.add_argument("--output", type=Path, default=None)
+    budget_parser.add_argument("--png-output", type=Path, default=None)
+    budget_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -165,6 +176,48 @@ def main() -> None:
                 "unresolved_count": histogram.unresolved_count,
             }
             for histogram in histograms
+        ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "budget-radius-compare":
+        powers = [int(chunk.strip()) for chunk in args.powers.split(",") if chunk.strip()]
+        comparisons = {
+            power: compare_radius_budgets(
+                power,
+                low_budget=args.low_budget,
+                high_budget=args.high_budget,
+                width=args.width,
+                height=args.height,
+                bands=args.bands,
+            )
+            for power in powers
+        }
+        if args.output is not None:
+            render_radius_budget_comparison_svg(comparisons, output=args.output, title=args.title)
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output)
+        payload = [
+            {
+                "power": power,
+                "low_budget": args.low_budget,
+                "high_budget": args.high_budget,
+                "grid_recovered_fraction": round(
+                    sum(row.sample_count * row.recovered_fraction for row in rows) / sum(row.sample_count for row in rows),
+                    6,
+                ),
+                "max_recovered_fraction": round(max(row.recovered_fraction for row in rows), 6),
+                "max_recovered_band": {
+                    "radius_min": round(max(rows, key=lambda row: row.recovered_fraction).radius_min, 6),
+                    "radius_max": round(max(rows, key=lambda row: row.recovered_fraction).radius_max, 6),
+                },
+                "high_budget_weakest_band": {
+                    "radius_min": round(min(rows, key=lambda row: row.high_converged_fraction).radius_min, 6),
+                    "radius_max": round(min(rows, key=lambda row: row.high_converged_fraction).radius_max, 6),
+                    "converged_fraction": round(min(rows, key=lambda row: row.high_converged_fraction).high_converged_fraction, 6),
+                },
+            }
+            for power, rows in comparisons.items()
         ]
         print(json.dumps(payload, indent=2))
         return

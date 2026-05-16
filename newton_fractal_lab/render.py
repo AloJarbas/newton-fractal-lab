@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 
-from .core import IterationHistogram, PowerScanRow, RadiusBandRow, basin_summary, sample_grid, unity_roots
+from .core import IterationHistogram, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -475,6 +475,146 @@ def render_iteration_histograms_svg(
     legend_y = 860
     lines.append(f'<rect x="{outer_left}" y="{legend_y - 26}" width="{2 * panel_w + panel_gap_x}" height="70" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
     lines.append(_paragraph(outer_left + 18, legend_y, ['Blue bars: exact convergence fraction at a given iteration count.', 'Orange bars inside each histogram: late tail beginning at 20 iterations. White bar: stalled or unresolved at the current cutoff.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_radius_budget_comparison_svg(
+    comparisons: dict[int, list[RadiusBudgetComparisonRow]],
+    *,
+    output: str | Path,
+    title: str | None = None,
+) -> None:
+    if not comparisons:
+        raise ValueError("comparisons must not be empty")
+
+    ordered_powers = sorted(comparisons)
+    first_rows = comparisons[ordered_powers[0]]
+    if not first_rows:
+        raise ValueError("comparisons must contain non-empty rows")
+
+    low_budget = first_rows[0].low_budget
+    high_budget = first_rows[0].high_budget
+    max_radius = max(row.radius_max for rows in comparisons.values() for row in rows)
+    max_recovered = max(row.recovered_fraction for rows in comparisons.values() for row in rows)
+    max_recovered = max(max_recovered, 0.02)
+
+    width = 1160
+    height = 1060
+    left = 76
+    right = 44
+    top = 112
+    gap_x = 34
+    gap_y = 54
+    panel_w = (width - left - right - gap_x) / 2.0
+    panel_h = 278
+    bottom_top = top + panel_h + gap_y
+    bottom_h = 300
+    colors = ["#60a5fa", "#f59e0b", "#34d399", "#f472b6", "#c084fc"]
+
+    def x_for(radius: float, panel_left: float, panel_width: float) -> float:
+        return panel_left + (radius / max_radius) * panel_width if max_radius > 0 else panel_left + panel_width / 2.0
+
+    def y_for_fraction(value: float, panel_top: float, panel_height: float) -> float:
+        return panel_top + panel_height - value * panel_height
+
+    def y_for_recovered(value: float) -> float:
+        return bottom_top + bottom_h - value / max_recovered * bottom_h
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="50" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Iteration-budget radius comparison")}</text>',
+        '<text x="76" y="76" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">The question here is simple: which slow radial bands are truly stubborn, and which ones were only budget-limited at the earlier cutoff?</text>',
+    ]
+
+    top_panels = [
+        (left, top, panel_w, panel_h, f"converged fraction by start radius at {low_budget} iterations"),
+        (left + panel_w + gap_x, top, panel_w, panel_h, f"converged fraction by start radius at {high_budget} iterations"),
+    ]
+    for panel_left, panel_top, panel_width, panel_height, label in top_panels:
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{panel_width}" height="{panel_height}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<text x="{panel_left + 18}" y="{panel_top + 28}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">{_escape(label)}</text>')
+        for tick in range(6):
+            radius = max_radius * tick / 5.0
+            x = x_for(radius, panel_left, panel_width)
+            lines.append(f'<line x1="{x:.2f}" y1="{panel_top + 40}" x2="{x:.2f}" y2="{panel_top + panel_height - 18}" stroke="#1f2937" stroke-width="1"/>')
+            lines.append(f'<text x="{x:.2f}" y="{panel_top + panel_height + 18}" fill="#94a3b8" font-size="12" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{radius:.2f}</text>')
+        for tick in range(5):
+            frac = tick / 4.0
+            y = y_for_fraction(frac, panel_top + 40, panel_height - 58)
+            lines.append(f'<line x1="{panel_left}" y1="{y:.2f}" x2="{panel_left + panel_width}" y2="{y:.2f}" stroke="#16202f" stroke-width="1"/>')
+            lines.append(f'<text x="{panel_left - 12}" y="{y + 4:.2f}" fill="#94a3b8" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{frac:.2f}</text>')
+        unit_x = x_for(1.0, panel_left, panel_width)
+        lines.append(f'<line x1="{unit_x:.2f}" y1="{panel_top + 40}" x2="{unit_x:.2f}" y2="{panel_top + panel_height - 18}" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="6 5" opacity="0.9"/>')
+        lines.append(f'<text x="{unit_x + 8:.2f}" y="{panel_top + 56:.2f}" fill="#dbeafe" font-size="12" font-family="Helvetica, Arial, sans-serif">unit circle</text>')
+        lines.append(f'<text x="{panel_left + panel_width / 2:.2f}" y="{panel_top + panel_height + 36}" fill="#cbd5e1" font-size="13" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">start radius |z₀|</text>')
+        lines.append(f'<text x="{panel_left - 56:.2f}" y="{panel_top + panel_height / 2:.2f}" fill="#cbd5e1" font-size="13" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" transform="rotate(-90 {panel_left - 56:.2f} {panel_top + panel_height / 2:.2f})">converged fraction</text>')
+
+    lines.append(f'<rect x="{left}" y="{bottom_top}" width="{width - left - right}" height="{bottom_h}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{bottom_top + 28}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">recovered share when the budget rises from {low_budget} to {high_budget}</text>')
+    for tick in range(6):
+        radius = max_radius * tick / 5.0
+        x = x_for(radius, left, width - left - right)
+        lines.append(f'<line x1="{x:.2f}" y1="{bottom_top + 40}" x2="{x:.2f}" y2="{bottom_top + bottom_h - 18}" stroke="#1f2937" stroke-width="1"/>')
+        lines.append(f'<text x="{x:.2f}" y="{bottom_top + bottom_h + 18}" fill="#94a3b8" font-size="12" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{radius:.2f}</text>')
+    for tick in range(5):
+        frac = max_recovered * tick / 4.0
+        y = y_for_recovered(frac)
+        lines.append(f'<line x1="{left}" y1="{y:.2f}" x2="{width - right}" y2="{y:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{left - 12}" y="{y + 4:.2f}" fill="#94a3b8" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{frac:.2f}</text>')
+    unit_x_bottom = x_for(1.0, left, width - left - right)
+    lines.append(f'<line x1="{unit_x_bottom:.2f}" y1="{bottom_top + 40}" x2="{unit_x_bottom:.2f}" y2="{bottom_top + bottom_h - 18}" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="6 5" opacity="0.9"/>')
+    lines.append(f'<text x="{unit_x_bottom + 8:.2f}" y="{bottom_top + 56:.2f}" fill="#dbeafe" font-size="12" font-family="Helvetica, Arial, sans-serif">unit circle</text>')
+    lines.append(f'<text x="{left + (width - left - right) / 2:.2f}" y="{bottom_top + bottom_h + 36}" fill="#cbd5e1" font-size="13" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">start radius |z₀|</text>')
+    lines.append(f'<text x="{left - 56:.2f}" y="{bottom_top + bottom_h / 2:.2f}" fill="#cbd5e1" font-size="13" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" transform="rotate(-90 {left - 56:.2f} {bottom_top + bottom_h / 2:.2f})">recovered fraction</text>')
+
+    for index, power in enumerate(ordered_powers):
+        rows = comparisons[power]
+        color = colors[index % len(colors)]
+        low_points = " ".join(
+            f"{x_for((row.radius_min + row.radius_max) / 2.0, left, panel_w):.2f},{y_for_fraction(row.low_converged_fraction, top + 40, panel_h - 58):.2f}"
+            for row in rows
+        )
+        high_points = " ".join(
+            f"{x_for((row.radius_min + row.radius_max) / 2.0, left + panel_w + gap_x, panel_w):.2f},{y_for_fraction(row.high_converged_fraction, top + 40, panel_h - 58):.2f}"
+            for row in rows
+        )
+        recovered_points = " ".join(
+            f"{x_for((row.radius_min + row.radius_max) / 2.0, left, width - left - right):.2f},{y_for_recovered(row.recovered_fraction):.2f}"
+            for row in rows
+        )
+        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3.4" points="{low_points}"/>')
+        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3.4" points="{high_points}"/>')
+        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3.4" points="{recovered_points}"/>')
+        for row in rows:
+            radius_mid = (row.radius_min + row.radius_max) / 2.0
+            low_x = x_for(radius_mid, left, panel_w)
+            high_x = x_for(radius_mid, left + panel_w + gap_x, panel_w)
+            bottom_x = x_for(radius_mid, left, width - left - right)
+            lines.append(f'<circle cx="{low_x:.2f}" cy="{y_for_fraction(row.low_converged_fraction, top + 40, panel_h - 58):.2f}" r="4.5" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+            lines.append(f'<circle cx="{high_x:.2f}" cy="{y_for_fraction(row.high_converged_fraction, top + 40, panel_h - 58):.2f}" r="4.5" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+            lines.append(f'<circle cx="{bottom_x:.2f}" cy="{y_for_recovered(row.recovered_fraction):.2f}" r="4.5" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+
+    legend_y = 852
+    lines.append(f'<rect x="{left}" y="{legend_y - 26}" width="{width - left - right}" height="88" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_y - 2}" fill="#e5eefc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">Profiles</text>')
+    for index, power in enumerate(ordered_powers):
+        color = colors[index % len(colors)]
+        x = left + 20 + index * 170
+        y = legend_y + 22
+        lines.append(f'<line x1="{x}" y1="{y}" x2="{x + 30}" y2="{y}" stroke="{color}" stroke-width="3"/>')
+        lines.append(f'<text x="{x + 40}" y="{y + 4}" fill="#dbeafe" font-size="13" font-family="Helvetica, Arial, sans-serif">z^{power} - 1</text>')
+    lines.append(_paragraph(left + 18, legend_y + 48, [f'If the bottom panel stays high, the earlier cutoff was hiding recoverable points.', f'If it falls close to zero, the remaining difficulty is geometry, not just the {low_budget}-step budget.'], fill='#9ec5ff', font_size=13, line_height=18))
     lines.append('</svg>')
 
     output = Path(output)

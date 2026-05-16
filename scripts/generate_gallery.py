@@ -7,8 +7,8 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from newton_fractal_lab.render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -18,6 +18,9 @@ SCAN_MIN = 2
 SCAN_MAX = 12
 RADIUS_POWERS = [3, 6, 9, 12]
 HISTOGRAM_POWERS = [3, 6, 9, 12]
+BUDGET_COMPARISON_POWERS = [3, 6, 9, 12]
+BUDGET_LOW = 40
+BUDGET_HIGH = 80
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -214,6 +217,95 @@ def main() -> None:
     )
 
     (REPORTS / "slow-convergence.md").write_text("\n".join(histogram_lines) + "\n")
+
+    budget_rows = {
+        power: compare_radius_budgets(
+            power,
+            low_budget=BUDGET_LOW,
+            high_budget=BUDGET_HIGH,
+            width=120,
+            height=120,
+            bands=12,
+        )
+        for power in BUDGET_COMPARISON_POWERS
+    }
+    budget_svg = ART / "iteration-budget-radius-comparison.svg"
+    budget_png = ART / "iteration-budget-radius-comparison.png"
+    render_radius_budget_comparison_svg(budget_rows, output=budget_svg)
+    export_png_from_svg(budget_svg, budget_png, size=2000, dpi=300)
+
+    budget_lines = [
+        "# Iteration-budget versus geometry",
+        "",
+        f"This report compares the same radial profiles at `{BUDGET_LOW}` and `{BUDGET_HIGH}` Newton steps.",
+        "The point is not just to say that higher powers are harder. It is to separate two different effects:",
+        "",
+        f"- starts that were only cutoff-limited at `{BUDGET_LOW}` and recover once the budget rises",
+        f"- starts that are still stubborn even at `{BUDGET_HIGH}`, which is the more geometric part of the story",
+        "",
+        "The radial view keeps the origin in frame, because the derivative singularity near `z = 0` is where the family first gets violent.",
+        "",
+        "## Main read",
+        "",
+    ]
+
+    def weighted_recovered_fraction(rows):
+        total = sum(row.sample_count for row in rows)
+        return sum(row.sample_count * row.recovered_fraction for row in rows) / total
+
+    most_recovered = max(budget_rows.items(), key=lambda item: weighted_recovered_fraction(item[1]))
+    most_stubborn = min(
+        budget_rows.items(),
+        key=lambda item: min(row.high_converged_fraction for row in item[1]),
+    )
+    budget_lines.append(
+        f"- the biggest whole-grid recovery here is `z^{most_recovered[0]} - 1`, where {weighted_recovered_fraction(most_recovered[1]):.1%} of sampled starts move from unresolved at `{BUDGET_LOW}` to converged by `{BUDGET_HIGH}`"
+    )
+    budget_lines.append(
+        f"- the most stubborn high-budget family here is `z^{most_stubborn[0]} - 1`, whose weakest radial band still converges only {min(row.high_converged_fraction for row in most_stubborn[1]):.1%} of the time even at `{BUDGET_HIGH}` steps"
+    )
+    budget_lines.append(
+        "- lower powers flatten much earlier, which is why `z^3 - 1` barely moves in the recovery panel while the higher-power inner bands still climb"
+    )
+    budget_lines.append("")
+    budget_lines.append("## Per-power summary")
+    budget_lines.append("")
+
+    for power in BUDGET_COMPARISON_POWERS:
+        rows = budget_rows[power]
+        strongest = max(rows, key=lambda row: row.recovered_fraction)
+        weakest_high = min(rows, key=lambda row: row.high_converged_fraction)
+        budget_lines.append(f"### z^{power} - 1")
+        budget_lines.append("")
+        recovered = weighted_recovered_fraction(rows)
+        if recovered > 0.0005:
+            budget_lines.append(f"- recovered across the whole sampled square: {recovered:.1%}")
+            budget_lines.append(
+                f"- strongest recovery band: `{strongest.radius_min:.2f} ≤ |z₀| < {strongest.radius_max:.2f}` gains {strongest.recovered_fraction:.1%} more converged starts when the budget rises from `{BUDGET_LOW}` to `{BUDGET_HIGH}`"
+            )
+        else:
+            budget_lines.append(f"- recovered across the whole sampled square: effectively none at this budget pair")
+            budget_lines.append(
+                f"- strongest recovery band: none worth calling out; the `{BUDGET_LOW}`-step cutoff was already enough for this sampled family"
+            )
+        budget_lines.append(
+            f"- weakest band even at `{BUDGET_HIGH}`: `{weakest_high.radius_min:.2f} ≤ |z₀| < {weakest_high.radius_max:.2f}` with convergence fraction {weakest_high.high_converged_fraction:.1%}"
+        )
+        budget_lines.append("")
+
+    budget_lines.extend(
+        [
+            "## Reading",
+            "",
+            f"- the bottom panel is the key: it marks bands where the `{BUDGET_LOW}`-step cutoff was hiding genuinely recoverable starts",
+            f"- if a band still looks weak at `{BUDGET_HIGH}`, that is harder to blame on the cutoff alone and easier to treat as actual basin-boundary geometry",
+            "- the higher-power families keep both effects alive at once: some inner bands recover a lot, but some outer or mid-radius bands are still not especially clean even after the budget doubles",
+            "",
+            "Open `art/iteration-budget-radius-comparison.svg`, `art/iteration-budget-radius-comparison.png`, and the older critical-structure and slow-tail notebooks next.",
+        ]
+    )
+
+    (REPORTS / "iteration-budget-comparison.md").write_text("\n".join(budget_lines) + "\n")
 
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
     print("generated gallery, scan figures, and reports")

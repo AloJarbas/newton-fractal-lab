@@ -53,6 +53,24 @@ class RadiusBandRow:
 
 
 @dataclass(frozen=True)
+class RadiusBudgetComparisonRow:
+    power: int
+    radius_min: float
+    radius_max: float
+    sample_count: int
+    low_budget: int
+    high_budget: int
+    low_converged_fraction: float
+    high_converged_fraction: float
+    low_mean_iterations: float
+    high_mean_iterations: float
+
+    @property
+    def recovered_fraction(self) -> float:
+        return self.high_converged_fraction - self.low_converged_fraction
+
+
+@dataclass(frozen=True)
 class IterationHistogram:
     power: int
     max_iter: int
@@ -301,6 +319,66 @@ def iteration_histogram(
         stalled_count=stalled_count,
         unresolved_count=unresolved_count,
     )
+
+
+def compare_radius_budgets(
+    power: int,
+    *,
+    low_budget: int = 40,
+    high_budget: int = 80,
+    width: int = 120,
+    height: int = 120,
+    bands: int = 12,
+    x_min: float = -1.6,
+    x_max: float = 1.6,
+    y_min: float = -1.6,
+    y_max: float = 1.6,
+) -> list[RadiusBudgetComparisonRow]:
+    if low_budget < 1 or high_budget < 1:
+        raise ValueError("budgets must both be positive")
+    if low_budget >= high_budget:
+        raise ValueError("low_budget must be smaller than high_budget")
+
+    low_rows = scan_radius_bands(
+        power,
+        width=width,
+        height=height,
+        max_iter=low_budget,
+        bands=bands,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+    )
+    high_rows = scan_radius_bands(
+        power,
+        width=width,
+        height=height,
+        max_iter=high_budget,
+        bands=bands,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+    )
+
+    rows: list[RadiusBudgetComparisonRow] = []
+    for low_row, high_row in zip(low_rows, high_rows):
+        rows.append(
+            RadiusBudgetComparisonRow(
+                power=power,
+                radius_min=low_row.radius_min,
+                radius_max=low_row.radius_max,
+                sample_count=low_row.sample_count,
+                low_budget=low_budget,
+                high_budget=high_budget,
+                low_converged_fraction=low_row.converged_fraction,
+                high_converged_fraction=high_row.converged_fraction,
+                low_mean_iterations=low_row.mean_iterations,
+                high_mean_iterations=high_row.mean_iterations,
+            )
+        )
+    return rows
 
 
 def _nearest_root_index(z: complex, roots: list[complex]) -> int:

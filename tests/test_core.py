@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
+from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -72,6 +72,14 @@ class NewtonFractalTests(unittest.TestCase):
         low = iteration_histogram(3, width=28, height=28, max_iter=30)
         high = iteration_histogram(10, width=28, height=28, max_iter=30)
         self.assertGreater(high.tail_fraction(15), low.tail_fraction(15))
+
+    def test_radius_budget_comparison_recovers_inner_band(self) -> None:
+        rows = compare_radius_budgets(12, low_budget=40, high_budget=80, width=36, height=36, bands=6)
+        self.assertEqual(len(rows), 6)
+        self.assertTrue(all(row.recovered_fraction >= 0.0 for row in rows))
+        strongest = max(rows, key=lambda row: row.recovered_fraction)
+        self.assertGreater(strongest.recovered_fraction, 0.05)
+        self.assertLess(strongest.radius_max, 1.5)
 
 
 if __name__ == "__main__":

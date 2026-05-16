@@ -14,6 +14,7 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 - a generated power-scan figure that tracks how convergence and basin-share spread drift as `n` increases
 - a generated critical-radius scan that makes the derivative singularity at `z = 0` visible as a real convergence problem instead of a throwaway caveat
 - a generated slow-convergence histogram figure that shows how much of the sampled square settles early, late, or not at all under one fixed iteration budget
+- a generated budget-comparison figure that shows which radial bands were only cutoff-limited and which ones stay stubborn after the iteration budget doubles
 - companion notebooks on critical structure and on the long iteration tail that thickens as the power rises
 - small tests that check roots, convergence, grid accounting, and the scan layer
 
@@ -42,6 +43,10 @@ That keeps the algebra simple enough that the geometry gets to be the star.
 ### Slow-convergence histograms
 
 ![Slow-convergence histograms](art/slow-convergence-histograms.png)
+
+### Iteration-budget radius comparison
+
+![Iteration-budget radius comparison](art/iteration-budget-radius-comparison.png)
 
 ## Why this repo is worth opening
 
@@ -101,26 +106,32 @@ Compare slow-convergence histograms across several powers:
 python3 -m newton_fractal_lab.cli iteration-hist --powers 3,6,9,12 --width 120 --height 120 --max-iter 40 --output art/slow-convergence-histograms.svg
 ```
 
+Compare the same radial profiles at two iteration budgets:
+
+```bash
+python3 -m newton_fractal_lab.cli budget-radius-compare --powers 3,6,9,12 --low-budget 40 --high-budget 80 --output art/iteration-budget-radius-comparison.svg --png-output art/iteration-budget-radius-comparison.png
+```
+
 ## Repo layout
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries
-- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures
-- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan and the new radial critical-structure scan
+- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures and the new budget-comparison card
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, and the new budget-comparison pass
 - `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
 - `reports/critical-structure.md`: generated note on where the derivative singularity shows up most clearly on the sampled square
 - `reports/slow-convergence.md`: generated note on how the long iteration tail thickens across the family
+- `reports/iteration-budget-comparison.md`: generated note on what disappears with a larger cutoff and what still looks geometrically stubborn
 - `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
 - `notebooks/slow_convergence_histograms.ipynb`: companion notebook on exact convergence-step counts, cumulative fractions, and cutoff caveats
 - `tests/test_core.py`: small verification layer
 
 ## Next good questions
 
-- what changes when the polynomial stops being `z^n - 1` and the roots stop being perfectly symmetric?
-- how much of the slow tail disappears if the iteration budget doubles, and how much is true geometric stubbornness?
 - where do the late-tail filaments thicken or thin as the cutoff changes?
 - what changes first when the symmetry is broken by one carefully chosen asymmetric polynomial?
+- which asymmetric polynomial is simple enough to break the symmetry without turning the repo into a generic root-finder zoo?
 
 That is enough to make this a real lab instead of just a pretty image dump.
 
