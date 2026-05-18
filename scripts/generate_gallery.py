@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 import sys
 
@@ -8,7 +9,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, unity_cubic
+from newton_fractal_lab.render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -21,6 +23,9 @@ HISTOGRAM_POWERS = [3, 6, 9, 12]
 BUDGET_COMPARISON_POWERS = [3, 6, 9, 12]
 BUDGET_LOW = 40
 BUDGET_HIGH = 80
+CUBIC_GRID = 180
+CUBIC_BANDS = 8
+CUBIC_LATE_THRESHOLD = 10
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -307,8 +312,118 @@ def main() -> None:
 
     (REPORTS / "iteration-budget-comparison.md").write_text("\n".join(budget_lines) + "\n")
 
+    unity = unity_cubic()
+    asymmetric = asymmetric_cubic()
+    unity_samples = sample_cubic_grid(unity, CUBIC_GRID, CUBIC_GRID, max_iter=40)
+    asymmetric_samples = sample_cubic_grid(asymmetric, CUBIC_GRID, CUBIC_GRID, max_iter=40)
+    unity_stats = cubic_basin_summary(unity, CUBIC_GRID, CUBIC_GRID, unity_samples)
+    asymmetric_stats = cubic_basin_summary(asymmetric, CUBIC_GRID, CUBIC_GRID, asymmetric_samples)
+    unity_rows = scan_critical_distance(unity, width=CUBIC_GRID, height=CUBIC_GRID, max_iter=40, bands=CUBIC_BANDS, late_threshold=CUBIC_LATE_THRESHOLD)
+    asymmetric_rows = scan_critical_distance(asymmetric, width=CUBIC_GRID, height=CUBIC_GRID, max_iter=40, bands=CUBIC_BANDS, late_threshold=CUBIC_LATE_THRESHOLD)
+    cubic_svg = ART / "asymmetric-cubic-critical-set-comparison.svg"
+    cubic_png = ART / "asymmetric-cubic-critical-set-comparison.png"
+    render_cubic_comparison_svg(
+        unity,
+        unity_stats,
+        unity_samples,
+        unity_rows,
+        asymmetric,
+        asymmetric_stats,
+        asymmetric_samples,
+        asymmetric_rows,
+        output=cubic_svg,
+    )
+    export_png_from_svg(cubic_svg, cubic_png, size=2200, dpi=300)
+
+    with (ART / "asymmetric-cubic-critical-set-comparison.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "band_index",
+                "distance_min",
+                "distance_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "dominant_share",
+                "share_root_0",
+                "share_root_1",
+                "share_root_2",
+            ],
+        )
+        writer.writeheader()
+        for row in unity_rows + asymmetric_rows:
+            writer.writerow(
+                {
+                    "polynomial": row.polynomial_slug,
+                    "band_index": row.band_index,
+                    "distance_min": row.distance_min,
+                    "distance_max": row.distance_max,
+                    "sample_count": row.sample_count,
+                    "mean_iterations": row.mean_iterations,
+                    "late_fraction": row.late_fraction,
+                    "dominant_share": row.dominant_share,
+                    "share_root_0": row.basin_shares[0],
+                    "share_root_1": row.basin_shares[1],
+                    "share_root_2": row.basin_shares[2],
+                }
+            )
+
+    unity_critical = cubic_critical_points(unity)
+    asymmetric_critical = cubic_critical_points(asymmetric)
+    strongest_asym = max(asymmetric_rows, key=lambda row: row.dominant_share)
+    hottest_unity = max(unity_rows, key=lambda row: row.late_fraction)
+    cubic_lines = [
+        "# Breaking the cubic symmetry",
+        "",
+        "This report adds one carefully chosen asymmetric cubic beside the original `z^n - 1` family.",
+        "The point is not to turn the repo into a generic root-finder zoo. The point is to show what changes first when the clean rotational symmetry disappears.",
+        "",
+        "## The two cubics",
+        "",
+        "### Unity cubic",
+        "",
+        "```text",
+        "p_u(z) = z^3 - 1",
+        "```",
+        "",
+        f"- roots: {unity.roots[0].real:+.3f} {unity.roots[0].imag:+.3f}i, {unity.roots[1].real:+.3f} {unity.roots[1].imag:+.3f}i, {unity.roots[2].real:+.3f} {unity.roots[2].imag:+.3f}i",
+        f"- critical points: {unity_critical[0].real:+.3f} {unity_critical[0].imag:+.3f}i and {unity_critical[1].real:+.3f} {unity_critical[1].imag:+.3f}i",
+        f"- basin shares on the sampled square: {unity_stats.basin_shares[0]:.1%}, {unity_stats.basin_shares[1]:.1%}, {unity_stats.basin_shares[2]:.1%}",
+        "",
+        "### Asymmetric cubic",
+        "",
+        "```text",
+        "p_a(z) = (z - 1)(z - (-0.9 + 1.05i))(z - (-0.15 - 0.25i))",
+        "```",
+        "",
+        f"- expanded coefficients: z^3 + ({asymmetric.coefficients[1].real:+.3f} {asymmetric.coefficients[1].imag:+.3f}i) z^2 + ({asymmetric.coefficients[2].real:+.3f} {asymmetric.coefficients[2].imag:+.3f}i) z + ({asymmetric.coefficients[3].real:+.3f} {asymmetric.coefficients[3].imag:+.3f}i)",
+        f"- critical points: {asymmetric_critical[0].real:+.3f} {asymmetric_critical[0].imag:+.3f}i and {asymmetric_critical[1].real:+.3f} {asymmetric_critical[1].imag:+.3f}i",
+        f"- basin shares on the sampled square: {asymmetric_stats.basin_shares[0]:.1%}, {asymmetric_stats.basin_shares[1]:.1%}, {asymmetric_stats.basin_shares[2]:.1%}",
+        "",
+        "## Main read",
+        "",
+        f"- the unity cubic keeps the classical democratic split: its largest basin share on the sampled square is only {max(unity_stats.basin_shares):.1%}",
+        f"- the asymmetric cubic breaks that immediately: one root now owns {max(asymmetric_stats.basin_shares):.1%} of the same square",
+        f"- the hottest unity band is the nearest-critical band, where {hottest_unity.late_fraction:.1%} of starts still need at least {CUBIC_LATE_THRESHOLD} steps",
+        f"- the asymmetric cubic no longer concentrates its whole late tail in one center halo, but its strongest band skew still reaches a dominant-share value of {strongest_asym.dominant_share:.1%}",
+        "",
+        "## Why the comparison matters",
+        "",
+        "The unity family let the origin stand in for the critical set because the cubic has one repeated critical point there.",
+        "Once symmetry breaks, that shortcut stops working.",
+        "The hard geometry is better organized by distance to the nearest critical point, and the basin shares stop hovering near one third each.",
+        "",
+        "That is the real upgrade here.",
+        "The repo is no longer only a study of the roots-of-unity family. It now has one bounded asymmetric lane that shows which parts of the old reading were specific to symmetry and which ones survive after the symmetry is gone.",
+        "",
+        "Open `art/asymmetric-cubic-critical-set-comparison.svg`, `art/asymmetric-cubic-critical-set-comparison.png`, and `notebooks/asymmetric_cubic_critical_set.ipynb` next.",
+    ]
+    (REPORTS / "asymmetric-cubic.md").write_text("\n".join(cubic_lines) + "\n")
+
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, and reports")
+    print("generated gallery, scan figures, cubic comparison, and reports")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
-from .render import export_png_from_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, unity_cubic
+from .render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -68,6 +69,16 @@ def main() -> None:
     budget_parser.add_argument("--output", type=Path, default=None)
     budget_parser.add_argument("--png-output", type=Path, default=None)
     budget_parser.add_argument("--title", type=str, default=None)
+
+    cubic_parser = subparsers.add_parser("cubic-compare", help="compare the unity cubic against one asymmetric cubic")
+    cubic_parser.add_argument("--width", type=int, default=180)
+    cubic_parser.add_argument("--height", type=int, default=180)
+    cubic_parser.add_argument("--max-iter", type=int, default=40)
+    cubic_parser.add_argument("--bands", type=int, default=8)
+    cubic_parser.add_argument("--late-threshold", type=int, default=10)
+    cubic_parser.add_argument("--output", type=Path, default=None)
+    cubic_parser.add_argument("--png-output", type=Path, default=None)
+    cubic_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -219,6 +230,60 @@ def main() -> None:
             }
             for power, rows in comparisons.items()
         ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "cubic-compare":
+        unity = unity_cubic()
+        asymmetric = asymmetric_cubic()
+        unity_samples = sample_cubic_grid(unity, args.width, args.height, max_iter=args.max_iter)
+        asym_samples = sample_cubic_grid(asymmetric, args.width, args.height, max_iter=args.max_iter)
+        unity_stats = cubic_basin_summary(unity, args.width, args.height, unity_samples)
+        asym_stats = cubic_basin_summary(asymmetric, args.width, args.height, asym_samples)
+        unity_rows = scan_critical_distance(
+            unity,
+            width=args.width,
+            height=args.height,
+            max_iter=args.max_iter,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+        )
+        asym_rows = scan_critical_distance(
+            asymmetric,
+            width=args.width,
+            height=args.height,
+            max_iter=args.max_iter,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+        )
+        if args.output is not None:
+            render_cubic_comparison_svg(
+                unity,
+                unity_stats,
+                unity_samples,
+                unity_rows,
+                asymmetric,
+                asym_stats,
+                asym_samples,
+                asym_rows,
+                output=args.output,
+                title=args.title,
+                max_iter=args.max_iter,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output, size=2200, dpi=300)
+        payload = {
+            "unity_cubic": {
+                "mean_iterations": round(unity_stats.mean_iterations, 6),
+                "basin_shares": [round(share, 6) for share in unity_stats.basin_shares],
+                "inner_late_fraction": round(unity_rows[0].late_fraction, 6),
+            },
+            "asymmetric_cubic": {
+                "mean_iterations": round(asym_stats.mean_iterations, 6),
+                "basin_shares": [round(share, 6) for share in asym_stats.basin_shares],
+                "inner_late_fraction": round(asym_rows[0].late_fraction, 6),
+            },
+        }
         print(json.dumps(payload, indent=2))
         return
 

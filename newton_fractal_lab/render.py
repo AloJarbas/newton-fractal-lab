@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 from .core import IterationHistogram, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
+from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -620,6 +621,243 @@ def render_radius_budget_comparison_svg(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines) + "\n")
+
+
+def render_cubic_comparison_svg(
+    unity_polynomial: CubicPolynomial,
+    unity_stats: CubicBasinStats,
+    unity_samples,
+    unity_rows: list[CriticalDistanceBandRow],
+    asymmetric_polynomial: CubicPolynomial,
+    asymmetric_stats: CubicBasinStats,
+    asymmetric_samples,
+    asymmetric_rows: list[CriticalDistanceBandRow],
+    *,
+    output: str | Path,
+    title: str | None = None,
+    max_iter: int = 40,
+) -> None:
+    width = 1480
+    height = 1260
+    panel_gap = 44
+    top = 116
+    map_size = 640
+    left = 58
+    map_left_2 = left + map_size + panel_gap
+    chart_top = top + map_size + 92
+    chart_width = 660
+    chart_height = 320
+
+    dominant_gap = max(asymmetric_stats.basin_shares) - max(unity_stats.basin_shares)
+    unity_inner_late = unity_rows[0].late_fraction if unity_rows else 0.0
+    asym_inner_late = asymmetric_rows[0].late_fraction if asymmetric_rows else 0.0
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Breaking the cubic symmetry changes the critical picture")}</text>',
+        '<text x="58" y="80" fill="#9ec5ff" font-size="17" font-family="Helvetica, Arial, sans-serif">Same square window, same Newton budget. The only change is the polynomial.</text>',
+    ]
+
+    _append_cubic_basin_panel(lines, unity_polynomial, unity_stats, unity_samples, left=left, top=top, size=map_size, max_iter=max_iter)
+    _append_cubic_basin_panel(lines, asymmetric_polynomial, asymmetric_stats, asymmetric_samples, left=map_left_2, top=top, size=map_size, max_iter=max_iter)
+
+    _append_critical_distance_chart(
+        lines,
+        title='Late tail by critical distance',
+        subtitle='The unity cubic is hottest right on top of its repeated center critical point. The asymmetric cubic spreads that tension out and cools the core.',
+        y_label='late fraction (≥10 steps)',
+        left=left,
+        top=chart_top,
+        width=chart_width,
+        height=chart_height,
+        unity_rows=unity_rows,
+        asymmetric_rows=asymmetric_rows,
+        value_getter=lambda row: row.late_fraction,
+        y_range=(0.0, max(0.9, _max_value(unity_rows, asymmetric_rows, lambda row: row.late_fraction) * 1.12)),
+    )
+    _append_critical_distance_chart(
+        lines,
+        title='Dominant basin share by critical distance',
+        subtitle='Symmetry breaking does not just move the critical set. It also lets one root own much more of the sampled square.',
+        y_label='largest basin share in band',
+        left=left + chart_width + panel_gap,
+        top=chart_top,
+        width=chart_width,
+        height=chart_height,
+        unity_rows=unity_rows,
+        asymmetric_rows=asymmetric_rows,
+        value_getter=lambda row: row.dominant_share,
+        y_range=(0.28, 1.05),
+        reference=1.0 / 3.0,
+        reference_label='equal share = 1/3',
+    )
+
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def _append_cubic_basin_panel(lines: list[str], polynomial: CubicPolynomial, stats: CubicBasinStats, samples, *, left: float, top: float, size: float, max_iter: int) -> None:
+    frame_top = top + 44
+    cell_w = size / stats.width
+    cell_h = size / stats.height
+
+    lines.append(f'<text x="{left}" y="{top + 2}" fill="#e5eefc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(polynomial.name)}</text>')
+    lines.append(f'<text x="{left}" y="{top + 26}" fill="#9ec5ff" font-size="16" font-family="Helvetica, Arial, sans-serif">roots ○, critical points ×, same square window</text>')
+    lines.append(f'<rect x="{left}" y="{frame_top}" width="{size}" height="{size}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+
+    for row in range(stats.height):
+        start = row * stats.width
+        row_samples = samples[start : start + stats.width]
+        run_start = 0
+        current_fill = _fill_for_cubic(row_samples[0], max_iter)
+        for col in range(1, stats.width + 1):
+            next_fill = _fill_for_cubic(row_samples[col], max_iter) if col < stats.width else None
+            if next_fill != current_fill:
+                x = left + run_start * cell_w
+                y = frame_top + row * cell_h
+                run_width = (col - run_start) * cell_w
+                lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{run_width:.2f}" height="{cell_h + 0.08:.2f}" fill="{current_fill}"/>')
+                run_start = col
+                current_fill = next_fill
+
+    for index, root in enumerate(polynomial.roots):
+        color = _cubic_palette(index)
+        x = left + (root.real - polynomial.x_min) / (polynomial.x_max - polynomial.x_min) * size
+        y = frame_top + (polynomial.y_max - root.imag) / (polynomial.y_max - polynomial.y_min) * size
+        x = min(max(x, left + 14), left + size - 14)
+        y = min(max(y, frame_top + 14), frame_top + size - 14)
+        lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="10" fill="#f8fafc" stroke="{color}" stroke-width="3.2"/>')
+
+    for point in cubic_critical_points(polynomial):
+        x = left + (point.real - polynomial.x_min) / (polynomial.x_max - polynomial.x_min) * size
+        y = frame_top + (polynomial.y_max - point.imag) / (polynomial.y_max - polynomial.y_min) * size
+        x = min(max(x, left + 16), left + size - 16)
+        y = min(max(y, frame_top + 16), frame_top + size - 16)
+        lines.append(f'<line x1="{x - 9:.2f}" y1="{y - 9:.2f}" x2="{x + 9:.2f}" y2="{y + 9:.2f}" stroke="#f8fafc" stroke-width="3"/>')
+        lines.append(f'<line x1="{x + 9:.2f}" y1="{y - 9:.2f}" x2="{x - 9:.2f}" y2="{y + 9:.2f}" stroke="#f8fafc" stroke-width="3"/>')
+
+    late_fraction = sum(1 for sample in samples if sample.iterations >= 10) / len(samples)
+    shares = ' / '.join(f'{share:.1%}' for share in stats.basin_shares)
+    lines.append(f'<text x="{left}" y="{frame_top + size + 32}" fill="#e2e8f0" font-size="18" font-family="Helvetica, Arial, sans-serif">mean {stats.mean_iterations:.2f} · late tail {late_fraction:.1%} · shares {shares}</text>')
+
+
+def _append_critical_distance_chart(
+    lines: list[str],
+    *,
+    title: str,
+    subtitle: str,
+    y_label: str,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    unity_rows: list[CriticalDistanceBandRow],
+    asymmetric_rows: list[CriticalDistanceBandRow],
+    value_getter,
+    y_range: tuple[float, float],
+    reference: float | None = None,
+    reference_label: str | None = None,
+) -> None:
+    pad_left = 84
+    pad_right = 24
+    plot_top = top + 78
+    plot_bottom = top + height - 54
+    plot_left = left + pad_left
+    plot_right = left + width - pad_right
+    x_max = max([row.distance_mid for row in unity_rows + asymmetric_rows if row.sample_count > 0] or [1.0])
+    y_min, y_max = y_range
+
+    def x_for(value: float) -> float:
+        return plot_left + (value / x_max) * (plot_right - plot_left) if x_max > 0 else (plot_left + plot_right) / 2.0
+
+    def y_for(value: float) -> float:
+        if y_max == y_min:
+            return (plot_top + plot_bottom) / 2.0
+        return plot_bottom - (value - y_min) / (y_max - y_min) * (plot_bottom - plot_top)
+
+    lines.append(f'<rect x="{left}" y="{top}" width="{width}" height="{height}" rx="20" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{top + 30}" fill="#e5eefc" font-size="21" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title)}</text>')
+    lines.append(f'<text x="{left + 18}" y="{top + 56}" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">{_escape(subtitle)}</text>')
+
+    for tick in range(5):
+        frac = tick / 4
+        y_value = y_min + frac * (y_max - y_min)
+        y = y_for(y_value)
+        lines.append(f'<line x1="{plot_left:.2f}" y1="{y:.2f}" x2="{plot_right:.2f}" y2="{y:.2f}" stroke="#1f2937" stroke-width="1"/>')
+        lines.append(f'<text x="{plot_left - 12:.2f}" y="{y + 4:.2f}" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{y_value:.2f}</text>')
+
+    for tick in range(5):
+        frac = tick / 4
+        x_value = frac * x_max
+        x = x_for(x_value)
+        lines.append(f'<line x1="{x:.2f}" y1="{plot_top:.2f}" x2="{x:.2f}" y2="{plot_bottom:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{x:.2f}" y="{plot_bottom + 24:.2f}" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{x_value:.2f}</text>')
+
+    if reference is not None:
+        reference_y = y_for(reference)
+        lines.append(f'<line x1="{plot_left:.2f}" y1="{reference_y:.2f}" x2="{plot_right:.2f}" y2="{reference_y:.2f}" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="7 6"/>')
+        if reference_label:
+            lines.append(f'<text x="{plot_right - 8:.2f}" y="{reference_y - 7:.2f}" fill="#e2e8f0" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{_escape(reference_label)}</text>')
+
+    _append_chart_series(lines, unity_rows, x_for=x_for, y_for=y_for, value_getter=value_getter, color='#60a5fa')
+    _append_chart_series(lines, asymmetric_rows, x_for=x_for, y_for=y_for, value_getter=value_getter, color='#f59e0b')
+
+    lines.append(f'<text x="{(plot_left + plot_right) / 2:.2f}" y="{top + height - 14:.2f}" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>')
+
+    legend_y = top + height - 90
+    lines.append(f'<line x1="{left + 20}" y1="{legend_y}" x2="{left + 48}" y2="{legend_y}" stroke="#60a5fa" stroke-width="3"/>')
+    lines.append(f'<text x="{left + 56}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">unity cubic</text>')
+    lines.append(f'<line x1="{left + 212}" y1="{legend_y}" x2="{left + 240}" y2="{legend_y}" stroke="#f59e0b" stroke-width="3"/>')
+    lines.append(f'<text x="{left + 248}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>')
+
+
+def _append_chart_series(lines: list[str], rows: list[CriticalDistanceBandRow], *, x_for, y_for, value_getter, color: str) -> None:
+    valid_rows = [row for row in rows if row.sample_count > 0]
+    if not valid_rows:
+        return
+    points = ' '.join(f'{x_for(row.distance_mid):.2f},{y_for(value_getter(row)):.2f}' for row in valid_rows)
+    lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3" points="{points}"/>')
+    for row in valid_rows:
+        x = x_for(row.distance_mid)
+        y = y_for(value_getter(row))
+        lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="4.5" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+
+
+def _max_value(unity_rows: list[CriticalDistanceBandRow], asymmetric_rows: list[CriticalDistanceBandRow], getter) -> float:
+    return max([getter(row) for row in unity_rows + asymmetric_rows if row.sample_count > 0] or [1.0])
+
+
+def _cubic_palette(index: int) -> str:
+    return ["#60a5fa", "#f59e0b", "#c084fc"][index % 3]
+
+
+def _fill_for_cubic(sample, max_iter: int) -> str:
+    if sample.root_index is None:
+        return '#020617'
+    base = _cubic_palette(sample.root_index)
+    speed = 1.0 - min(sample.iterations, max_iter) / max_iter
+    return _shade_hex(base, 0.34 + 0.66 * speed)
+
+
+def _shade_hex(color: str, factor: float) -> str:
+    factor = max(0.0, min(factor, 1.0))
+    red = int(color[1:3], 16)
+    green = int(color[3:5], 16)
+    blue = int(color[5:7], 16)
+    red = int(red * factor)
+    green = int(green * factor)
+    blue = int(blue * factor)
+    return f'#{red:02x}{green:02x}{blue:02x}'
 
 
 def export_png_from_svg(svg_path: str | Path, png_path: str | Path, *, size: int = 1800, dpi: int = 300) -> bool:
