@@ -8,9 +8,9 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
 from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -23,6 +23,9 @@ HISTOGRAM_POWERS = [3, 6, 9, 12]
 BUDGET_COMPARISON_POWERS = [3, 6, 9, 12]
 BUDGET_LOW = 40
 BUDGET_HIGH = 80
+LATE_TAIL_POWERS = [3, 6, 9, 12]
+LATE_TAIL_THRESHOLD = 20
+LATE_TAIL_TILES = 12
 CUBIC_GRID = 180
 CUBIC_BANDS = 8
 CUBIC_LATE_THRESHOLD = 10
@@ -312,6 +315,108 @@ def main() -> None:
 
     (REPORTS / "iteration-budget-comparison.md").write_text("\n".join(budget_lines) + "\n")
 
+    late_tail_rows = {
+        power: scan_late_tail_tiles(
+            power,
+            width=120,
+            height=120,
+            max_iter=40,
+            late_threshold=LATE_TAIL_THRESHOLD,
+            tile_cols=LATE_TAIL_TILES,
+            tile_rows=LATE_TAIL_TILES,
+        )
+        for power in LATE_TAIL_POWERS
+    }
+    late_tail_svg = ART / "late-tail-spatial-map.svg"
+    late_tail_png = ART / "late-tail-spatial-map.png"
+    render_late_tail_heatmap_svg(
+        late_tail_rows,
+        output=late_tail_svg,
+        late_threshold=LATE_TAIL_THRESHOLD,
+        max_iter=40,
+    )
+    export_png_from_svg(late_tail_svg, late_tail_png, size=2200, dpi=300)
+
+    with (ART / "late-tail-spatial-map.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "power",
+                "tile_x",
+                "tile_y",
+                "x_min",
+                "x_max",
+                "y_min",
+                "y_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "unresolved_fraction",
+            ],
+        )
+        writer.writeheader()
+        for rows in late_tail_rows.values():
+            for row in rows:
+                writer.writerow(
+                    {
+                        "power": row.power,
+                        "tile_x": row.tile_x,
+                        "tile_y": row.tile_y,
+                        "x_min": row.x_min,
+                        "x_max": row.x_max,
+                        "y_min": row.y_min,
+                        "y_max": row.y_max,
+                        "sample_count": row.sample_count,
+                        "mean_iterations": row.mean_iterations,
+                        "late_fraction": row.late_fraction,
+                        "unresolved_fraction": row.unresolved_fraction,
+                    }
+                )
+
+    late_tail_lines = [
+        "# Late-tail spatial map",
+        "",
+        f"This report keeps the earlier 20-step late-tail cutoff from the histogram pass, but stops collapsing everything onto one axis.",
+        "The question is local now: where on the sampled square do those slow starts actually live?",
+        "",
+        f"Each panel bins the same square into `{LATE_TAIL_TILES} × {LATE_TAIL_TILES}` tiles and marks the share of starts that either need at least `{LATE_TAIL_THRESHOLD}` Newton steps or fail the 40-step cutoff.",
+        "",
+        "## Main read",
+        "",
+    ]
+
+    for power in LATE_TAIL_POWERS:
+        rows = late_tail_rows[power]
+        hottest = max(rows, key=lambda row: row.late_fraction)
+        grid_late = sum(row.sample_count * row.late_fraction for row in rows) / sum(row.sample_count for row in rows)
+        center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+        center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+        if power == LATE_TAIL_POWERS[0]:
+            late_tail_lines.append(
+                f"- `z^{power} - 1` still keeps most of its slow starts on thin boundary filaments: the hottest tile reaches only {hottest.late_fraction:.1%}, and the center four tiles average {center_late:.1%}"
+            )
+        else:
+            late_tail_lines.append(
+                f"- `z^{power} - 1` has already grown a real center halo: the hottest tile `{hottest.x_min:+.2f} ≤ Re(z₀) < {hottest.x_max:+.2f}`, `{hottest.y_min:+.2f} ≤ Im(z₀) < {hottest.y_max:+.2f}` is at {hottest.late_fraction:.1%}, and the center four tiles average {center_late:.1%}"
+            )
+        late_tail_lines.append(f"- whole-grid late fraction for `z^{power} - 1`: {grid_late:.1%}")
+    late_tail_lines.extend(
+        [
+            "",
+            "## Why the map earns its place",
+            "",
+            "- the histogram pass said how much late tail existed, but not whether it sat in a center block or in thin off-axis filaments",
+            "- the radius scan said the center matters more at higher powers, but it still averaged away direction and spoke structure",
+            "- this map is the missing bridge: low powers still look boundary-dominated, while higher powers visibly turn the origin neighborhood into a full finite-budget trap instead of a mere thin band",
+            "",
+            "That is the useful new fact. The slow region does not just get bigger. Its shape changes.",
+            "",
+            "Open `art/late-tail-spatial-map.svg`, `art/late-tail-spatial-map.png`, and `notebooks/late_tail_spatial_map.ipynb` next.",
+        ]
+    )
+
+    (REPORTS / "late-tail-spatial-map.md").write_text("\n".join(late_tail_lines) + "\n")
+
     unity = unity_cubic()
     asymmetric = asymmetric_cubic()
     unity_samples = sample_cubic_grid(unity, CUBIC_GRID, CUBIC_GRID, max_iter=40)
@@ -423,7 +528,7 @@ def main() -> None:
     (REPORTS / "asymmetric-cubic.md").write_text("\n".join(cubic_lines) + "\n")
 
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, cubic comparison, and reports")
+    print("generated gallery, scan figures, late-tail map, cubic comparison, and reports")
 
 
 if __name__ == "__main__":

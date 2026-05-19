@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 
-from .core import IterationHistogram, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
+from .core import IterationHistogram, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
 from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
@@ -623,6 +623,147 @@ def render_radius_budget_comparison_svg(
     output.write_text("\n".join(lines) + "\n")
 
 
+def render_late_tail_heatmap_svg(
+    profiles: dict[int, list[LateTailTileRow]],
+    *,
+    output: str | Path,
+    title: str | None = None,
+    late_threshold: int = 20,
+    max_iter: int = 40,
+) -> None:
+    if not profiles:
+        raise ValueError("profiles must not be empty")
+
+    ordered_powers = sorted(profiles)
+    first_rows = profiles[ordered_powers[0]]
+    if not first_rows:
+        raise ValueError("profiles must contain non-empty rows")
+
+    x_min = min(row.x_min for row in first_rows)
+    x_max = max(row.x_max for row in first_rows)
+    y_min = min(row.y_min for row in first_rows)
+    y_max = max(row.y_max for row in first_rows)
+    cols = max(row.tile_x for row in first_rows) + 1
+    rows_per_panel = max(row.tile_y for row in first_rows) + 1
+
+    page_width = 1180
+    left = 58
+    right = 42
+    top = 116
+    gap_x = 34
+    gap_y = 30
+    footer_h = 160
+    card_w = (page_width - left - right - gap_x) / 2.0
+    card_h = 432
+    card_rows = (len(ordered_powers) + 1) // 2
+    page_height = int(top + card_rows * card_h + max(0, card_rows - 1) * gap_y + footer_h)
+
+    def map_x(map_left: float, map_size: float, value: float) -> float:
+        return map_left + (value - x_min) / (x_max - x_min) * map_size
+
+    def map_y(map_top: float, map_size: float, value: float) -> float:
+        return map_top + (y_max - value) / (y_max - y_min) * map_size
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {page_width} {page_height}" width="{page_width}" height="{page_height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateLegend" x1="0" y1="0" x2="1" y2="0">',
+        f'    <stop offset="0%" stop-color="{_late_tail_hex(0.0)}"/>',
+        f'    <stop offset="100%" stop-color="{_late_tail_hex(1.0)}"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="50" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Late-tail spatial map")}</text>',
+        f'<text x="{left}" y="76" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">Each tile asks the same local question: what share of starts in this block still needs at least {late_threshold} steps, or never settles within the {max_iter}-step cutoff?</text>',
+    ]
+
+    for index, power in enumerate(ordered_powers):
+        panel_col = index % 2
+        panel_row = index // 2
+        panel_left = left + panel_col * (card_w + gap_x)
+        panel_top = top + panel_row * (card_h + gap_y)
+        panel_rows = profiles[power]
+        hottest = max(panel_rows, key=lambda row: row.late_fraction)
+        grid_late = sum(row.sample_count * row.late_fraction for row in panel_rows) / sum(row.sample_count for row in panel_rows)
+        grid_unresolved = sum(row.sample_count * row.unresolved_fraction for row in panel_rows) / sum(row.sample_count for row in panel_rows)
+        center_rows = sorted(panel_rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+        center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{card_w}" height="{card_h}" rx="20" fill="#020617" stroke="#334155" stroke-width="1.4"/>')
+        lines.append(f'<text x="{panel_left + 22}" y="{panel_top + 34}" fill="#e5eefc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">z^{power} - 1</text>')
+        lines.append(f'<text x="{panel_left + 22}" y="{panel_top + 56}" fill="#93c5fd" font-size="13" font-family="Helvetica, Arial, sans-serif">12×12 local blocks over the same sampled square</text>')
+
+        map_left = panel_left + 24
+        map_top = panel_top + 74
+        map_size = 224
+        lines.append(f'<rect x="{map_left}" y="{map_top}" width="{map_size}" height="{map_size}" rx="16" fill="#0b1320" stroke="#24324a" stroke-width="1.2"/>')
+        axis_x = map_x(map_left, map_size, 0.0)
+        axis_y = map_y(map_top, map_size, 0.0)
+        unit_r = map_size * (1.0 / (x_max - x_min))
+        lines.append(f'<line x1="{axis_x:.2f}" y1="{map_top + 8:.2f}" x2="{axis_x:.2f}" y2="{map_top + map_size - 8:.2f}" stroke="#dbeafe" stroke-width="1.1" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<line x1="{map_left + 8:.2f}" y1="{axis_y:.2f}" x2="{map_left + map_size - 8:.2f}" y2="{axis_y:.2f}" stroke="#dbeafe" stroke-width="1.1" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<circle cx="{axis_x:.2f}" cy="{axis_y:.2f}" r="{unit_r:.2f}" fill="none" stroke="#cbd5e1" stroke-width="1.1" stroke-dasharray="6 5" opacity="0.55"/>')
+
+        for row in panel_rows:
+            x = map_x(map_left, map_size, row.x_min)
+            y = map_y(map_top, map_size, row.y_max)
+            w = (row.x_max - row.x_min) / (x_max - x_min) * map_size
+            h = (row.y_max - row.y_min) / (y_max - y_min) * map_size
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w + 0.4:.2f}" height="{h + 0.4:.2f}" fill="{_late_tail_hex(row.late_fraction)}"/>')
+
+        lines.append(f'<text x="{map_left}" y="{map_top + map_size + 24}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">Re(z₀)</text>')
+        lines.append(f'<text x="{map_left - 10}" y="{map_top + map_size / 2:.2f}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif" transform="rotate(-90 {map_left - 10} {map_top + map_size / 2:.2f})">Im(z₀)</text>')
+
+        summary_x = panel_left + 24
+        summary_y = map_top + map_size + 58
+        lines.append(f'<text x="{summary_x}" y="{summary_y}" fill="#e5eefc" font-size="18" font-family="Helvetica, Arial, sans-serif" font-weight="700">What changed</text>')
+        lines.append(
+            _paragraph(
+                summary_x,
+                summary_y + 28,
+                [
+                    f'grid late: {grid_late:.1%}',
+                    f'center four tiles: {center_late:.1%}',
+                    f'unresolved: {grid_unresolved:.1%}',
+                ],
+                fill='#cbd5e1',
+                font_size=14,
+                line_height=20,
+            )
+        )
+        lines.append(f'<text x="{summary_x}" y="{summary_y + 112}" fill="#e5eefc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">Hottest tile</text>')
+        lines.append(
+            _paragraph(
+                summary_x,
+                summary_y + 138,
+                [
+                    f'{hottest.x_min:+.2f} ≤ Re(z₀) < {hottest.x_max:+.2f}',
+                    f'{hottest.y_min:+.2f} ≤ Im(z₀) < {hottest.y_max:+.2f}',
+                    f'late-tail share: {hottest.late_fraction:.1%}',
+                ],
+                fill='#fbd38d',
+                font_size=14,
+                line_height=20,
+            )
+        )
+    legend_top = page_height - 118
+    lines.append(f'<rect x="{left}" y="{legend_top - 28}" width="{page_width - left - right}" height="74" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top - 2}" fill="#e5eefc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">Legend</text>')
+    lines.append(f'<rect x="{left + 18}" y="{legend_top + 12}" width="220" height="18" rx="9" fill="url(#lateLegend)" stroke="#475569" stroke-width="1"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top + 48}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
+    lines.append(f'<text x="{left + 238}" y="{legend_top + 48}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
+    lines.append(_paragraph(left + 280, legend_top + 8, [f'Orange intensity = local late-tail share (≥ {late_threshold} steps or unresolved by {max_iter}).', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
 def render_cubic_comparison_svg(
     unity_polynomial: CubicPolynomial,
     unity_stats: CubicBasinStats,
@@ -835,6 +976,16 @@ def _append_chart_series(lines: list[str], rows: list[CriticalDistanceBandRow], 
 
 def _max_value(unity_rows: list[CriticalDistanceBandRow], asymmetric_rows: list[CriticalDistanceBandRow], getter) -> float:
     return max([getter(row) for row in unity_rows + asymmetric_rows if row.sample_count > 0] or [1.0])
+
+
+def _late_tail_hex(fraction: float) -> str:
+    fraction = max(0.0, min(fraction, 1.0))
+    start = (11, 19, 32)
+    end = (249, 115, 22)
+    red = int(start[0] + (end[0] - start[0]) * fraction)
+    green = int(start[1] + (end[1] - start[1]) * fraction)
+    blue = int(start[2] + (end[2] - start[2]) * fraction)
+    return f'#{red:02x}{green:02x}{blue:02x}'
 
 
 def _cubic_palette(index: int) -> str:

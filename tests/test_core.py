@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family, unity_roots
+from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -80,6 +80,30 @@ class NewtonFractalTests(unittest.TestCase):
         strongest = max(rows, key=lambda row: row.recovered_fraction)
         self.assertGreater(strongest.recovered_fraction, 0.05)
         self.assertLess(strongest.radius_max, 1.5)
+
+    def test_late_tail_tiles_cover_entire_grid(self) -> None:
+        rows = scan_late_tail_tiles(6, width=24, height=24, max_iter=30, late_threshold=15, tile_cols=6, tile_rows=6)
+        self.assertEqual(len(rows), 36)
+        self.assertEqual(sum(row.sample_count for row in rows), 24 * 24)
+        for row in rows:
+            self.assertGreaterEqual(row.late_fraction, 0.0)
+            self.assertLessEqual(row.late_fraction, 1.0)
+            self.assertGreaterEqual(row.unresolved_fraction, 0.0)
+            self.assertLessEqual(row.unresolved_fraction, 1.0)
+
+    def test_high_power_late_tail_tiles_heat_the_center(self) -> None:
+        rows = scan_late_tail_tiles(12, width=48, height=48, max_iter=40, late_threshold=20, tile_cols=8, tile_rows=8)
+        hottest = max(rows, key=lambda row: row.late_fraction)
+        self.assertGreater(hottest.late_fraction, 0.9)
+        self.assertLess(abs(hottest.x_mid), 0.5)
+        self.assertLess(abs(hottest.y_mid), 0.5)
+
+    def test_high_power_has_more_late_tail_mass_than_low_power(self) -> None:
+        low = scan_late_tail_tiles(3, width=48, height=48, max_iter=40, late_threshold=20, tile_cols=8, tile_rows=8)
+        high = scan_late_tail_tiles(12, width=48, height=48, max_iter=40, late_threshold=20, tile_cols=8, tile_rows=8)
+        low_fraction = sum(row.sample_count * row.late_fraction for row in low) / sum(row.sample_count for row in low)
+        high_fraction = sum(row.sample_count * row.late_fraction for row in high) / sum(row.sample_count for row in high)
+        self.assertGreater(high_fraction, low_fraction)
 
 
 if __name__ == "__main__":

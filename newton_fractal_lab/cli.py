@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_radius_bands, scan_unity_family
+from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
 from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, unity_cubic
-from .render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -69,6 +69,18 @@ def main() -> None:
     budget_parser.add_argument("--output", type=Path, default=None)
     budget_parser.add_argument("--png-output", type=Path, default=None)
     budget_parser.add_argument("--title", type=str, default=None)
+
+    late_tail_parser = subparsers.add_parser("late-tail-map", help="map where late-tail starts cluster on the sampled square")
+    late_tail_parser.add_argument("--powers", type=str, required=True, help="comma-separated powers, e.g. 3,6,9,12")
+    late_tail_parser.add_argument("--width", type=int, default=120)
+    late_tail_parser.add_argument("--height", type=int, default=120)
+    late_tail_parser.add_argument("--max-iter", type=int, default=40)
+    late_tail_parser.add_argument("--late-threshold", type=int, default=20)
+    late_tail_parser.add_argument("--tile-cols", type=int, default=12)
+    late_tail_parser.add_argument("--tile-rows", type=int, default=12)
+    late_tail_parser.add_argument("--output", type=Path, default=None)
+    late_tail_parser.add_argument("--png-output", type=Path, default=None)
+    late_tail_parser.add_argument("--title", type=str, default=None)
 
     cubic_parser = subparsers.add_parser("cubic-compare", help="compare the unity cubic against one asymmetric cubic")
     cubic_parser.add_argument("--width", type=int, default=180)
@@ -229,6 +241,50 @@ def main() -> None:
                 },
             }
             for power, rows in comparisons.items()
+        ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "late-tail-map":
+        powers = [int(chunk.strip()) for chunk in args.powers.split(",") if chunk.strip()]
+        profiles = {
+            power: scan_late_tail_tiles(
+                power,
+                width=args.width,
+                height=args.height,
+                max_iter=args.max_iter,
+                late_threshold=args.late_threshold,
+                tile_cols=args.tile_cols,
+                tile_rows=args.tile_rows,
+            )
+            for power in powers
+        }
+        if args.output is not None:
+            render_late_tail_heatmap_svg(
+                profiles,
+                output=args.output,
+                title=args.title,
+                late_threshold=args.late_threshold,
+                max_iter=args.max_iter,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output, size=2200, dpi=300)
+        payload = [
+            {
+                "power": power,
+                "grid_late_fraction": round(
+                    sum(row.sample_count * row.late_fraction for row in rows) / sum(row.sample_count for row in rows),
+                    6,
+                ),
+                "hottest_tile": {
+                    "tile_x": max(rows, key=lambda row: row.late_fraction).tile_x,
+                    "tile_y": max(rows, key=lambda row: row.late_fraction).tile_y,
+                    "late_fraction": round(max(rows, key=lambda row: row.late_fraction).late_fraction, 6),
+                    "x_mid": round(max(rows, key=lambda row: row.late_fraction).x_mid, 6),
+                    "y_mid": round(max(rows, key=lambda row: row.late_fraction).y_mid, 6),
+                },
+            }
+            for power, rows in profiles.items()
         ]
         print(json.dumps(payload, indent=2))
         return

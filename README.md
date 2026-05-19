@@ -18,8 +18,9 @@ It now has one bounded asymmetric lane too: a carefully chosen cubic that breaks
 - a generated critical-radius scan that makes the derivative singularity at `z = 0` visible as a real convergence problem instead of a throwaway caveat
 - a generated slow-convergence histogram figure that shows how much of the sampled square settles early, late, or not at all under one fixed iteration budget
 - a generated budget-comparison figure that shows which radial bands were only cutoff-limited and which ones stay stubborn after the iteration budget doubles
+- a generated late-tail spatial map that shows where the slow starts actually live on the square instead of collapsing them onto one histogram or one radial axis
 - a generated asymmetric-cubic comparison card that separates the unity-family center singularity story from the first effects of broken symmetry
-- companion notebooks on critical structure, the long iteration tail, and the new asymmetric cubic critical-set pass
+- companion notebooks on critical structure, the long iteration tail, the new late-tail spatial map, and the asymmetric cubic critical-set pass
 - small tests that check roots, convergence, grid accounting, and the new cubic lane
 
 ## Gallery
@@ -52,6 +53,12 @@ It now has one bounded asymmetric lane too: a carefully chosen cubic that breaks
 
 ![Iteration-budget radius comparison](art/iteration-budget-radius-comparison.png)
 
+### Late-tail spatial map
+
+![Late-tail spatial map](art/late-tail-spatial-map.png)
+
+This pass closes a real gap in the earlier notes. The histogram told you how much late-tail mass existed. The radius scan told you the center got hotter as the power rose. The new map shows the missing geometric fact: for low powers the slow starts still sit mostly on thin basin filaments, while higher powers turn the origin neighborhood into a visibly thick finite-budget trap.
+
 ### Breaking the cubic symmetry
 
 ![Asymmetric cubic critical-set comparison](art/asymmetric-cubic-critical-set-comparison.png)
@@ -73,6 +80,8 @@ This repo is small on purpose:
 - just enough code to inspect the iteration, render the geometry, and summarize what the grid is doing.
 
 The new asymmetric-cubic sidecar matters because it keeps the repo honest. A lot of the old reading depended on the unity family's symmetry. Now there is one concrete counterexample lane showing what survives after that symmetry breaks.
+
+The late-tail spatial map matters for the same reason. It upgrades the old "higher powers are slower" line into something more geometric: the slow region does not just grow, it changes shape.
 
 ## Quick start
 
@@ -124,6 +133,12 @@ Compare the same radial profiles at two iteration budgets:
 python3 -m newton_fractal_lab.cli budget-radius-compare --powers 3,6,9,12 --low-budget 40 --high-budget 80 --output art/iteration-budget-radius-comparison.svg --png-output art/iteration-budget-radius-comparison.png
 ```
 
+Render the late-tail spatial map:
+
+```bash
+python3 -m newton_fractal_lab.cli late-tail-map --powers 3,6,9,12 --late-threshold 20 --output art/late-tail-spatial-map.svg --png-output art/late-tail-spatial-map.png
+```
+
 Compare the unity cubic against the new asymmetric cubic lane:
 
 ```bash
@@ -135,24 +150,26 @@ python3 -m newton_fractal_lab.cli cubic-compare --output art/asymmetric-cubic-cr
 - `newton_fractal_lab/core.py`: iteration and basin summaries for the unity family
 - `newton_fractal_lab/cubic.py`: bounded asymmetric-cubic lane with explicit roots, critical points, and nearest-critical-point scans
 - `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures, the budget-comparison card, and the new cubic-comparison card
-- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the budget-comparison pass, and the new `cubic-compare` command
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the late-tail spatial map, the budget-comparison pass, and the new `cubic-compare` command
 - `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
 - `reports/critical-structure.md`: generated note on where the derivative singularity shows up most clearly on the sampled square
 - `reports/slow-convergence.md`: generated note on how the long iteration tail thickens across the family
 - `reports/iteration-budget-comparison.md`: generated note on what disappears with a larger cutoff and what still looks geometrically stubborn
+- `reports/late-tail-spatial-map.md`: generated note on where slow starts stay filament-thin and where they condense into a center halo
 - `reports/asymmetric-cubic.md`: generated note on what changes first when the cubic symmetry is broken
 - `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
 - `notebooks/slow_convergence_histograms.ipynb`: companion notebook on exact convergence-step counts, cumulative fractions, and cutoff caveats
+- `notebooks/late_tail_spatial_map.ipynb`: companion notebook on tiled late-tail occupancy and center-versus-filament comparisons
 - `notebooks/asymmetric_cubic_critical_set.ipynb`: companion notebook for the new asymmetric-cubic critical-set pass
 - `tests/test_core.py` and `tests/test_cubic.py`: small verification layer
 
 ## Next good questions
 
-- where do the late-tail filaments thicken or thin as the cutoff changes?
-- add one spatial heatmap of late-tail starts only if it reveals something the histogram and critical-distance scans still miss
+- compare the late-tail map at one higher iteration budget only if that reveals a real persistence effect instead of just cooling the same tiles
 - try one second asymmetric polynomial only if it reveals a genuinely different critical-set geometry instead of repeating the same share-skew story
+- compare the unity and asymmetric cubic cards at one higher iteration budget only if that reveals a real geometric persistence effect instead of just cooling the same bands
 
 That is enough to make this a real lab instead of just a pretty image dump.
 

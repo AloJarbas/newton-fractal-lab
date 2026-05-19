@@ -71,6 +71,29 @@ class RadiusBudgetComparisonRow:
 
 
 @dataclass(frozen=True)
+class LateTailTileRow:
+    power: int
+    tile_x: int
+    tile_y: int
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    sample_count: int
+    mean_iterations: float
+    late_fraction: float
+    unresolved_fraction: float
+
+    @property
+    def x_mid(self) -> float:
+        return 0.5 * (self.x_min + self.x_max)
+
+    @property
+    def y_mid(self) -> float:
+        return 0.5 * (self.y_min + self.y_max)
+
+
+@dataclass(frozen=True)
 class IterationHistogram:
     power: int
     max_iter: int
@@ -378,6 +401,82 @@ def compare_radius_budgets(
                 high_mean_iterations=high_row.mean_iterations,
             )
         )
+    return rows
+
+
+def scan_late_tail_tiles(
+    power: int,
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 40,
+    late_threshold: int = 20,
+    tile_cols: int = 12,
+    tile_rows: int = 12,
+    x_min: float = -1.6,
+    x_max: float = 1.6,
+    y_min: float = -1.6,
+    y_max: float = 1.6,
+) -> list[LateTailTileRow]:
+    if tile_cols < 1 or tile_rows < 1:
+        raise ValueError("tile_cols and tile_rows must both be at least 1")
+    if late_threshold < 0:
+        raise ValueError("late_threshold must be non-negative")
+
+    samples = sample_grid(
+        power,
+        width,
+        height,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+        max_iter=max_iter,
+    )
+
+    x_step = (x_max - x_min) / tile_cols
+    y_step = (y_max - y_min) / tile_rows
+    tile_count = tile_cols * tile_rows
+    sample_counts = [0] * tile_count
+    late_counts = [0] * tile_count
+    unresolved_counts = [0] * tile_count
+    iteration_sums = [0] * tile_count
+
+    for sample in samples:
+        x_frac = (sample.start.real - x_min) / (x_max - x_min) if x_max > x_min else 0.0
+        y_frac = (y_max - sample.start.imag) / (y_max - y_min) if y_max > y_min else 0.0
+        tile_x = min(tile_cols - 1, max(0, int(x_frac * tile_cols)))
+        tile_y = min(tile_rows - 1, max(0, int(y_frac * tile_rows)))
+        index = tile_y * tile_cols + tile_x
+        sample_counts[index] += 1
+        iteration_sums[index] += sample.iterations
+        unresolved = sample.stalled or not sample.converged
+        late = sample.iterations >= late_threshold or unresolved
+        if unresolved:
+            unresolved_counts[index] += 1
+        if late:
+            late_counts[index] += 1
+
+    rows: list[LateTailTileRow] = []
+    for tile_y in range(tile_rows):
+        for tile_x in range(tile_cols):
+            index = tile_y * tile_cols + tile_x
+            count = sample_counts[index]
+            rows.append(
+                LateTailTileRow(
+                    power=power,
+                    tile_x=tile_x,
+                    tile_y=tile_y,
+                    x_min=x_min + tile_x * x_step,
+                    x_max=x_min + (tile_x + 1) * x_step,
+                    y_min=y_max - (tile_y + 1) * y_step,
+                    y_max=y_max - tile_y * y_step,
+                    sample_count=count,
+                    mean_iterations=iteration_sums[index] / count if count else 0.0,
+                    late_fraction=late_counts[index] / count if count else 0.0,
+                    unresolved_fraction=unresolved_counts[index] / count if count else 0.0,
+                )
+            )
     return rows
 
 
