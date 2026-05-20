@@ -9,8 +9,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, unity_cubic
+from newton_fractal_lab.render import export_png_from_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -29,6 +29,9 @@ LATE_TAIL_TILES = 12
 CUBIC_GRID = 180
 CUBIC_BANDS = 8
 CUBIC_LATE_THRESHOLD = 10
+CUBIC_BUDGET_LOW = 8
+CUBIC_BUDGET_HIGH = 24
+CUBIC_BUDGET_TILES = 12
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -527,8 +530,191 @@ def main() -> None:
     ]
     (REPORTS / "asymmetric-cubic.md").write_text("\n".join(cubic_lines) + "\n")
 
+    unity_low_tiles = scan_cubic_late_tail_tiles(
+        unity,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_LOW,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        tile_cols=CUBIC_BUDGET_TILES,
+        tile_rows=CUBIC_BUDGET_TILES,
+    )
+    unity_high_tiles = scan_cubic_late_tail_tiles(
+        unity,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_HIGH,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        tile_cols=CUBIC_BUDGET_TILES,
+        tile_rows=CUBIC_BUDGET_TILES,
+    )
+    asymmetric_low_tiles = scan_cubic_late_tail_tiles(
+        asymmetric,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_LOW,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        tile_cols=CUBIC_BUDGET_TILES,
+        tile_rows=CUBIC_BUDGET_TILES,
+    )
+    asymmetric_high_tiles = scan_cubic_late_tail_tiles(
+        asymmetric,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_HIGH,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        tile_cols=CUBIC_BUDGET_TILES,
+        tile_rows=CUBIC_BUDGET_TILES,
+    )
+    unity_low_budget_rows = scan_critical_distance(
+        unity,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_LOW,
+        bands=CUBIC_BANDS,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        include_unresolved_in_late=True,
+    )
+    unity_high_budget_rows = scan_critical_distance(
+        unity,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_HIGH,
+        bands=CUBIC_BANDS,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        include_unresolved_in_late=True,
+    )
+    asymmetric_low_budget_rows = scan_critical_distance(
+        asymmetric,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_LOW,
+        bands=CUBIC_BANDS,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        include_unresolved_in_late=True,
+    )
+    asymmetric_high_budget_rows = scan_critical_distance(
+        asymmetric,
+        width=120,
+        height=120,
+        max_iter=CUBIC_BUDGET_HIGH,
+        bands=CUBIC_BANDS,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        include_unresolved_in_late=True,
+    )
+
+    cubic_budget_svg = ART / "cubic-budget-persistence.svg"
+    cubic_budget_png = ART / "cubic-budget-persistence.png"
+    render_cubic_budget_persistence_svg(
+        unity_low_tiles=unity_low_tiles,
+        unity_high_tiles=unity_high_tiles,
+        asymmetric_low_tiles=asymmetric_low_tiles,
+        asymmetric_high_tiles=asymmetric_high_tiles,
+        unity_low_rows=unity_low_budget_rows,
+        unity_high_rows=unity_high_budget_rows,
+        asymmetric_low_rows=asymmetric_low_budget_rows,
+        asymmetric_high_rows=asymmetric_high_budget_rows,
+        low_budget=CUBIC_BUDGET_LOW,
+        high_budget=CUBIC_BUDGET_HIGH,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        output=cubic_budget_svg,
+    )
+    export_png_from_svg(cubic_budget_svg, cubic_budget_png, size=2200, dpi=300)
+
+    with (ART / "cubic-budget-persistence.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "budget",
+                "tile_x",
+                "tile_y",
+                "x_min",
+                "x_max",
+                "y_min",
+                "y_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "unresolved_fraction",
+            ],
+        )
+        writer.writeheader()
+        for row in unity_low_tiles + unity_high_tiles + asymmetric_low_tiles + asymmetric_high_tiles:
+            writer.writerow(
+                {
+                    "polynomial": row.polynomial_slug,
+                    "budget": row.budget,
+                    "tile_x": row.tile_x,
+                    "tile_y": row.tile_y,
+                    "x_min": row.x_min,
+                    "x_max": row.x_max,
+                    "y_min": row.y_min,
+                    "y_max": row.y_max,
+                    "sample_count": row.sample_count,
+                    "mean_iterations": row.mean_iterations,
+                    "late_fraction": row.late_fraction,
+                    "unresolved_fraction": row.unresolved_fraction,
+                }
+            )
+
+    def summarize_tiles(rows):
+        total = sum(row.sample_count for row in rows)
+        grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+        center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+        center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+        unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+        return grid_late, center_late, unresolved
+
+    unity_low_grid, unity_low_center, unity_low_unresolved = summarize_tiles(unity_low_tiles)
+    unity_high_grid, unity_high_center, unity_high_unresolved = summarize_tiles(unity_high_tiles)
+    asymmetric_low_grid, asymmetric_low_center, asymmetric_low_unresolved = summarize_tiles(asymmetric_low_tiles)
+    asymmetric_high_grid, asymmetric_high_center, asymmetric_high_unresolved = summarize_tiles(asymmetric_high_tiles)
+    unity_core_low = unity_low_budget_rows[0]
+    unity_core_high = unity_high_budget_rows[0]
+    asym_core_low = asymmetric_low_budget_rows[0]
+    asym_core_high = asymmetric_high_budget_rows[0]
+    cubic_budget_lines = [
+        "# Cubic budget persistence",
+        "",
+        f"This pass keeps the same two cubics but changes the Newton cutoff from `{CUBIC_BUDGET_LOW}` steps to `{CUBIC_BUDGET_HIGH}` steps.",
+        "The narrow question is the useful one: how much of the old drama was just a tight cutoff, and how much of it survives as a real slow region once the budget rises?",
+        "",
+        "## Main read",
+        "",
+        f"- the unity cubic center stays hot even after the budget rises: the center four tiles only cool from `{unity_low_center:.1%}` to `{unity_high_center:.1%}` late-tail share",
+        f"- the asymmetric cubic cools much harder over the same jump: the center four tiles fall from `{asymmetric_low_center:.1%}` to `{asymmetric_high_center:.1%}`",
+        f"- unresolved starts explain part of the low-budget picture, especially for the unity cubic: its unresolved share drops from `{unity_low_unresolved:.1%}` to `{unity_high_unresolved:.1%}`",
+        f"- but the repeated center critical point still leaves a persistent slow core: the nearest-critical unity band stays at `{unity_core_high.late_fraction:.1%}` tail share even at `{CUBIC_BUDGET_HIGH}` steps, versus `{asym_core_high.late_fraction:.1%}` for the asymmetric cubic",
+        "",
+        "## Why this matters",
+        "",
+        "The earlier asymmetric-cubic comparison showed that broken symmetry changes basin shares and critical-point geometry.",
+        "This follow-up asks the next honest question: was the hotter unity core only a low-budget artifact?",
+        "",
+        "The answer is no.",
+        "",
+        f"At `{CUBIC_BUDGET_LOW}` steps both cubics still mix real slow geometry with plain cutoff trouble. Once the cutoff rises to `{CUBIC_BUDGET_HIGH}`, most of the asymmetric-core drama cools away, but the unity cubic keeps a much fatter slow center. That is the bounded persistence effect this sidecar adds.",
+        "",
+        "## Summary table",
+        "",
+        f"- unity cubic, {CUBIC_BUDGET_LOW} steps: grid late `{unity_low_grid:.1%}`, center four tiles `{unity_low_center:.1%}`, unresolved `{unity_low_unresolved:.1%}`",
+        f"- unity cubic, {CUBIC_BUDGET_HIGH} steps: grid late `{unity_high_grid:.1%}`, center four tiles `{unity_high_center:.1%}`, unresolved `{unity_high_unresolved:.1%}`",
+        f"- asymmetric cubic, {CUBIC_BUDGET_LOW} steps: grid late `{asymmetric_low_grid:.1%}`, center four tiles `{asymmetric_low_center:.1%}`, unresolved `{asymmetric_low_unresolved:.1%}`",
+        f"- asymmetric cubic, {CUBIC_BUDGET_HIGH} steps: grid late `{asymmetric_high_grid:.1%}`, center four tiles `{asymmetric_high_center:.1%}`, unresolved `{asymmetric_high_unresolved:.1%}`",
+        "",
+        "## Read the figure",
+        "",
+        f"- top row: low-budget tail-or-cutoff map at `{CUBIC_BUDGET_LOW}` steps",
+        f"- bottom row: the same map after the cutoff rises to `{CUBIC_BUDGET_HIGH}` steps",
+        f"- right-side charts: critical-distance tail share with unresolved starts counted as part of the low-budget tail story",
+        "",
+        "Open `art/cubic-budget-persistence.svg`, `art/cubic-budget-persistence.png`, `art/cubic-budget-persistence.csv`, and `notebooks/cubic_budget_persistence.ipynb` next.",
+    ]
+    (REPORTS / "cubic-budget-persistence.md").write_text("\n".join(cubic_budget_lines) + "\n")
+
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, late-tail map, cubic comparison, and reports")
+    print("generated gallery, scan figures, late-tail map, cubic comparisons, and reports")
 
 
 if __name__ == "__main__":

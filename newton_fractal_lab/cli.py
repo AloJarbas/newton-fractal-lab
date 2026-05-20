@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, unity_cubic
-from .render import export_png_from_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, unity_cubic
+from .render import export_png_from_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -91,6 +91,19 @@ def main() -> None:
     cubic_parser.add_argument("--output", type=Path, default=None)
     cubic_parser.add_argument("--png-output", type=Path, default=None)
     cubic_parser.add_argument("--title", type=str, default=None)
+
+    cubic_budget_parser = subparsers.add_parser("cubic-budget-persistence", help="compare low- and high-budget late-tail persistence for the unity and asymmetric cubics")
+    cubic_budget_parser.add_argument("--width", type=int, default=120)
+    cubic_budget_parser.add_argument("--height", type=int, default=120)
+    cubic_budget_parser.add_argument("--tile-cols", type=int, default=12)
+    cubic_budget_parser.add_argument("--tile-rows", type=int, default=12)
+    cubic_budget_parser.add_argument("--bands", type=int, default=8)
+    cubic_budget_parser.add_argument("--late-threshold", type=int, default=10)
+    cubic_budget_parser.add_argument("--low-budget", type=int, default=8)
+    cubic_budget_parser.add_argument("--high-budget", type=int, default=24)
+    cubic_budget_parser.add_argument("--output", type=Path, default=None)
+    cubic_budget_parser.add_argument("--png-output", type=Path, default=None)
+    cubic_budget_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -339,6 +352,125 @@ def main() -> None:
                 "basin_shares": [round(share, 6) for share in asym_stats.basin_shares],
                 "inner_late_fraction": round(asym_rows[0].late_fraction, 6),
             },
+        }
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "cubic-budget-persistence":
+        unity = unity_cubic()
+        asymmetric = asymmetric_cubic()
+        unity_low_tiles = scan_cubic_late_tail_tiles(
+            unity,
+            width=args.width,
+            height=args.height,
+            max_iter=args.low_budget,
+            late_threshold=args.late_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+        )
+        unity_high_tiles = scan_cubic_late_tail_tiles(
+            unity,
+            width=args.width,
+            height=args.height,
+            max_iter=args.high_budget,
+            late_threshold=args.late_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+        )
+        asymmetric_low_tiles = scan_cubic_late_tail_tiles(
+            asymmetric,
+            width=args.width,
+            height=args.height,
+            max_iter=args.low_budget,
+            late_threshold=args.late_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+        )
+        asymmetric_high_tiles = scan_cubic_late_tail_tiles(
+            asymmetric,
+            width=args.width,
+            height=args.height,
+            max_iter=args.high_budget,
+            late_threshold=args.late_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+        )
+        unity_low_rows = scan_critical_distance(
+            unity,
+            width=args.width,
+            height=args.height,
+            max_iter=args.low_budget,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+            include_unresolved_in_late=True,
+        )
+        unity_high_rows = scan_critical_distance(
+            unity,
+            width=args.width,
+            height=args.height,
+            max_iter=args.high_budget,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+            include_unresolved_in_late=True,
+        )
+        asymmetric_low_rows = scan_critical_distance(
+            asymmetric,
+            width=args.width,
+            height=args.height,
+            max_iter=args.low_budget,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+            include_unresolved_in_late=True,
+        )
+        asymmetric_high_rows = scan_critical_distance(
+            asymmetric,
+            width=args.width,
+            height=args.height,
+            max_iter=args.high_budget,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+            include_unresolved_in_late=True,
+        )
+
+        if args.output is not None:
+            render_cubic_budget_persistence_svg(
+                unity_low_tiles=unity_low_tiles,
+                unity_high_tiles=unity_high_tiles,
+                asymmetric_low_tiles=asymmetric_low_tiles,
+                asymmetric_high_tiles=asymmetric_high_tiles,
+                unity_low_rows=unity_low_rows,
+                unity_high_rows=unity_high_rows,
+                asymmetric_low_rows=asymmetric_low_rows,
+                asymmetric_high_rows=asymmetric_high_rows,
+                low_budget=args.low_budget,
+                high_budget=args.high_budget,
+                late_threshold=args.late_threshold,
+                output=args.output,
+                title=args.title,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output)
+
+        def summarize(rows):
+            total = sum(row.sample_count for row in rows)
+            grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+            center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+            center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+            unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+            return {
+                "grid_late_fraction": round(grid_late, 6),
+                "center_four_fraction": round(center_late, 6),
+                "unresolved_fraction": round(unresolved, 6),
+            }
+
+        payload = {
+            "low_budget": args.low_budget,
+            "high_budget": args.high_budget,
+            "late_threshold": args.late_threshold,
+            "unity_low": summarize(unity_low_tiles),
+            "unity_high": summarize(unity_high_tiles),
+            "asymmetric_low": summarize(asymmetric_low_tiles),
+            "asymmetric_high": summarize(asymmetric_high_tiles),
         }
         print(json.dumps(payload, indent=2))
         return

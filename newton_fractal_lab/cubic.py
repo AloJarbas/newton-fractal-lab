@@ -50,10 +50,36 @@ class CriticalDistanceBandRow:
     late_fraction: float
     dominant_share: float
     basin_shares: tuple[float, float, float]
+    unresolved_fraction: float = 0.0
 
     @property
     def distance_mid(self) -> float:
         return 0.5 * (self.distance_min + self.distance_max)
+
+
+@dataclass(frozen=True)
+class CubicLateTailTileRow:
+    polynomial_slug: str
+    polynomial_name: str
+    budget: int
+    tile_x: int
+    tile_y: int
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    sample_count: int
+    mean_iterations: float
+    late_fraction: float
+    unresolved_fraction: float
+
+    @property
+    def x_mid(self) -> float:
+        return 0.5 * (self.x_min + self.x_max)
+
+    @property
+    def y_mid(self) -> float:
+        return 0.5 * (self.y_min + self.y_max)
 
 
 def cubic_from_roots(
@@ -215,6 +241,7 @@ def scan_critical_distance(
     max_iter: int = 40,
     bands: int = 8,
     late_threshold: int = 10,
+    include_unresolved_in_late: bool = False,
 ) -> list[CriticalDistanceBandRow]:
     if bands < 1:
         raise ValueError("bands must be at least 1")
@@ -257,6 +284,12 @@ def scan_critical_distance(
 
         counts = [sum(1 for sample in bucket if sample.root_index == idx) for idx in range(3)]
         basin_shares = tuple(count / len(bucket) for count in counts)
+        unresolved_fraction = sum(1 for sample in bucket if sample.stalled or not sample.converged) / len(bucket)
+        late_fraction = sum(
+            1
+            for sample in bucket
+            if sample.iterations >= late_threshold or (include_unresolved_in_late and (sample.stalled or not sample.converged))
+        ) / len(bucket)
         rows.append(
             CriticalDistanceBandRow(
                 polynomial_slug=polynomial.slug,
@@ -266,9 +299,74 @@ def scan_critical_distance(
                 distance_max=distance_max,
                 sample_count=len(bucket),
                 mean_iterations=sum(sample.iterations for sample in bucket) / len(bucket),
-                late_fraction=sum(1 for sample in bucket if sample.iterations >= late_threshold) / len(bucket),
+                late_fraction=late_fraction,
                 dominant_share=max(basin_shares),
                 basin_shares=basin_shares,
+                unresolved_fraction=unresolved_fraction,
             )
         )
+    return rows
+
+
+def scan_cubic_late_tail_tiles(
+    polynomial: CubicPolynomial,
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 40,
+    late_threshold: int = 10,
+    tile_cols: int = 12,
+    tile_rows: int = 12,
+) -> list[CubicLateTailTileRow]:
+    if tile_cols < 1 or tile_rows < 1:
+        raise ValueError("tile_cols and tile_rows must both be at least 1")
+    if late_threshold < 0:
+        raise ValueError("late_threshold must be non-negative")
+
+    samples = sample_cubic_grid(polynomial, width, height, max_iter=max_iter)
+    x_step = (polynomial.x_max - polynomial.x_min) / tile_cols
+    y_step = (polynomial.y_max - polynomial.y_min) / tile_rows
+    tile_count = tile_cols * tile_rows
+    sample_counts = [0] * tile_count
+    late_counts = [0] * tile_count
+    unresolved_counts = [0] * tile_count
+    iteration_sums = [0] * tile_count
+
+    for sample in samples:
+        x_frac = (sample.start.real - polynomial.x_min) / (polynomial.x_max - polynomial.x_min) if polynomial.x_max > polynomial.x_min else 0.0
+        y_frac = (polynomial.y_max - sample.start.imag) / (polynomial.y_max - polynomial.y_min) if polynomial.y_max > polynomial.y_min else 0.0
+        tile_x = min(tile_cols - 1, max(0, int(x_frac * tile_cols)))
+        tile_y = min(tile_rows - 1, max(0, int(y_frac * tile_rows)))
+        index = tile_y * tile_cols + tile_x
+        sample_counts[index] += 1
+        iteration_sums[index] += sample.iterations
+        unresolved = sample.stalled or not sample.converged
+        late = sample.iterations >= late_threshold or unresolved
+        if unresolved:
+            unresolved_counts[index] += 1
+        if late:
+            late_counts[index] += 1
+
+    rows: list[CubicLateTailTileRow] = []
+    for tile_y in range(tile_rows):
+        for tile_x in range(tile_cols):
+            index = tile_y * tile_cols + tile_x
+            count = sample_counts[index]
+            rows.append(
+                CubicLateTailTileRow(
+                    polynomial_slug=polynomial.slug,
+                    polynomial_name=polynomial.name,
+                    budget=max_iter,
+                    tile_x=tile_x,
+                    tile_y=tile_y,
+                    x_min=polynomial.x_min + tile_x * x_step,
+                    x_max=polynomial.x_min + (tile_x + 1) * x_step,
+                    y_min=polynomial.y_max - (tile_y + 1) * y_step,
+                    y_max=polynomial.y_max - tile_y * y_step,
+                    sample_count=count,
+                    mean_iterations=iteration_sums[index] / count if count else 0.0,
+                    late_fraction=late_counts[index] / count if count else 0.0,
+                    unresolved_fraction=unresolved_counts[index] / count if count else 0.0,
+                )
+            )
     return rows

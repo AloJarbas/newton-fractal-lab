@@ -10,6 +10,7 @@ from newton_fractal_lab.cubic import (
     iterate_cubic,
     sample_cubic_grid,
     scan_critical_distance,
+    scan_cubic_late_tail_tiles,
     unity_cubic,
 )
 
@@ -44,6 +45,22 @@ class CubicComparisonTests(unittest.TestCase):
         result = iterate_cubic(complex(-0.12, -0.18), polynomial, max_iter=30)
         self.assertTrue(result.converged)
         self.assertEqual(result.root_index, 2)
+
+    def test_cubic_late_tail_tiles_keep_expected_shape(self) -> None:
+        rows = scan_cubic_late_tail_tiles(unity_cubic(), width=48, height=48, max_iter=8, late_threshold=10, tile_cols=6, tile_rows=6)
+        self.assertEqual(len(rows), 36)
+        for row in rows:
+            self.assertGreater(row.sample_count, 0)
+            self.assertGreaterEqual(row.late_fraction, 0.0)
+            self.assertLessEqual(row.late_fraction, 1.0)
+            self.assertGreaterEqual(row.unresolved_fraction, 0.0)
+            self.assertLessEqual(row.unresolved_fraction, 1.0)
+
+    def test_unity_core_stays_hotter_after_budget_rises(self) -> None:
+        unity_rows = scan_critical_distance(unity_cubic(), width=72, height=72, max_iter=24, bands=6, late_threshold=10, include_unresolved_in_late=True)
+        asym_rows = scan_critical_distance(asymmetric_cubic(), width=72, height=72, max_iter=24, bands=6, late_threshold=10, include_unresolved_in_late=True)
+        self.assertGreater(unity_rows[0].late_fraction, 0.55)
+        self.assertLess(asym_rows[0].late_fraction, 0.2)
 
 
 if __name__ == "__main__":

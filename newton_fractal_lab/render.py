@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 
 from .core import IterationHistogram, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
-from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicPolynomial, cubic_critical_points, sample_cubic_grid
+from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -840,6 +840,160 @@ def render_cubic_comparison_svg(
         reference_label='equal share = 1/3',
     )
 
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_cubic_budget_persistence_svg(
+    *,
+    unity_low_tiles: list[CubicLateTailTileRow],
+    unity_high_tiles: list[CubicLateTailTileRow],
+    asymmetric_low_tiles: list[CubicLateTailTileRow],
+    asymmetric_high_tiles: list[CubicLateTailTileRow],
+    unity_low_rows: list[CriticalDistanceBandRow],
+    unity_high_rows: list[CriticalDistanceBandRow],
+    asymmetric_low_rows: list[CriticalDistanceBandRow],
+    asymmetric_high_rows: list[CriticalDistanceBandRow],
+    low_budget: int,
+    high_budget: int,
+    late_threshold: int,
+    output: str | Path,
+    title: str | None = None,
+) -> None:
+    width = 1480
+    height = 1460
+    left = 58
+    top = 116
+    map_size = 280
+    panel_gap_x = 40
+    panel_gap_y = 34
+    chart_top = top + 2 * map_size + panel_gap_y + 92
+    chart_w = 660
+    chart_h = 300
+
+    def _panel_summary(rows: list[CubicLateTailTileRow]) -> tuple[float, float, float, CubicLateTailTileRow]:
+        total = sum(row.sample_count for row in rows)
+        grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+        center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+        center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+        unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+        hottest = max(rows, key=lambda row: row.late_fraction)
+        return grid_late, center_late, unresolved, hottest
+
+    def _append_tile_panel(lines: list[str], rows: list[CubicLateTailTileRow], *, panel_left: float, panel_top: float, label: str) -> None:
+        x_min = min(row.x_min for row in rows)
+        x_max = max(row.x_max for row in rows)
+        y_min = min(row.y_min for row in rows)
+        y_max = max(row.y_max for row in rows)
+
+        def map_x(value: float) -> float:
+            return panel_left + (value - x_min) / (x_max - x_min) * map_size
+
+        def map_y(value: float) -> float:
+            return panel_top + (y_max - value) / (y_max - y_min) * map_size
+
+        grid_late, center_late, unresolved, _ = _panel_summary(rows)
+        axis_x = map_x(0.0)
+        axis_y = map_y(0.0)
+        unit_r = map_size * (1.0 / (x_max - x_min))
+
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{map_size}" height="{map_size}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<text x="{panel_left}" y="{panel_top - 20}" fill="#e5eefc" font-size="20" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(label)}</text>')
+        lines.append(f'<line x1="{axis_x:.2f}" y1="{panel_top + 10:.2f}" x2="{axis_x:.2f}" y2="{panel_top + map_size - 10:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<line x1="{panel_left + 10:.2f}" y1="{axis_y:.2f}" x2="{panel_left + map_size - 10:.2f}" y2="{axis_y:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<circle cx="{axis_x:.2f}" cy="{axis_y:.2f}" r="{unit_r:.2f}" fill="none" stroke="#cbd5e1" stroke-width="1.0" stroke-dasharray="6 5" opacity="0.55"/>')
+
+        for row in rows:
+            x = map_x(row.x_min)
+            y = map_y(row.y_max)
+            w = (row.x_max - row.x_min) / (x_max - x_min) * map_size
+            h = (row.y_max - row.y_min) / (y_max - y_min) * map_size
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w + 0.4:.2f}" height="{h + 0.4:.2f}" fill="{_late_tail_hex(row.late_fraction)}"/>')
+
+        lines.append(f'<text x="{panel_left}" y="{panel_top + map_size + 24}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">Re(z₀)</text>')
+        lines.append(f'<text x="{panel_left - 10}" y="{panel_top + map_size / 2:.2f}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif" transform="rotate(-90 {panel_left - 10} {panel_top + map_size / 2:.2f})">Im(z₀)</text>')
+        lines.append(_paragraph(panel_left, panel_top + map_size + 48, [f'late {grid_late:.1%}', f'center {center_late:.1%} · unresolved {unresolved:.1%}'], fill='#cbd5e1', font_size=14, line_height=18))
+
+    unity_low_grid, unity_low_center, unity_low_unresolved, _ = _panel_summary(unity_low_tiles)
+    unity_high_grid, unity_high_center, unity_high_unresolved, _ = _panel_summary(unity_high_tiles)
+    asym_low_grid, asym_low_center, asym_low_unresolved, _ = _panel_summary(asymmetric_low_tiles)
+    asym_high_grid, asym_high_center, asym_high_unresolved, _ = _panel_summary(asymmetric_high_tiles)
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateLegend" x1="0" y1="0" x2="1" y2="0">',
+        f'    <stop offset="0%" stop-color="{_late_tail_hex(0.0)}"/>',
+        f'    <stop offset="100%" stop-color="{_late_tail_hex(1.0)}"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Cubic late-tail persistence")}</text>',
+        f'<text x="{left}" y="80" fill="#9ec5ff" font-size="16" font-family="Helvetica, Arial, sans-serif">Late tiles mark starts that still need at least {late_threshold} steps, or never settle by the cutoff. The question is what stays hot after the cutoff rises.</text>',
+    ]
+
+    _append_tile_panel(lines, unity_low_tiles, panel_left=left, panel_top=top, label=f'unity cubic · {low_budget} steps')
+    _append_tile_panel(lines, asymmetric_low_tiles, panel_left=left + map_size + panel_gap_x, panel_top=top, label=f'asymmetric cubic · {low_budget} steps')
+    _append_tile_panel(lines, unity_high_tiles, panel_left=left, panel_top=top + map_size + panel_gap_y + 120, label=f'unity cubic · {high_budget} steps')
+    _append_tile_panel(lines, asymmetric_high_tiles, panel_left=left + map_size + panel_gap_x, panel_top=top + map_size + panel_gap_y + 120, label=f'asymmetric cubic · {high_budget} steps')
+
+    _append_critical_distance_chart(
+        lines,
+        title=f'near-critical tail at {low_budget} steps',
+        subtitle='Low budget mixes real slow geometry with plain cutoff trouble.',
+        y_label='tail-or-cutoff fraction',
+        left=760,
+        top=top,
+        width=660,
+        height=300,
+        unity_rows=unity_low_rows,
+        asymmetric_rows=asymmetric_low_rows,
+        value_getter=lambda row: row.late_fraction,
+        y_range=(0.0, max(1.0, _max_value(unity_low_rows, asymmetric_low_rows, lambda row: row.late_fraction) * 1.08)),
+    )
+    _append_critical_distance_chart(
+        lines,
+        title=f'near-critical tail at {high_budget} steps',
+        subtitle='The higher budget removes most cutoff noise. What survives is the geometric part.',
+        y_label='tail fraction',
+        left=760,
+        top=top + 338,
+        width=660,
+        height=300,
+        unity_rows=unity_high_rows,
+        asymmetric_rows=asymmetric_high_rows,
+        value_getter=lambda row: row.late_fraction,
+        y_range=(0.0, max(1.0, _max_value(unity_high_rows, asymmetric_high_rows, lambda row: row.late_fraction) * 1.08)),
+    )
+
+    summary_top = chart_top - 20
+    lines.append(f'<rect x="760" y="{summary_top}" width="660" height="244" rx="20" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="782" y="{summary_top + 30}" fill="#e5eefc" font-size="21" font-family="Helvetica, Arial, sans-serif" font-weight="700">What survives when the cutoff rises</text>')
+    lines.append(_paragraph(782, summary_top + 58, [
+        f'unity cubic center-four tiles: {unity_low_center:.1%} → {unity_high_center:.1%}',
+        f'asymmetric cubic center-four tiles: {asym_low_center:.1%} → {asym_high_center:.1%}',
+        f'unity unresolved share: {unity_low_unresolved:.1%} → {unity_high_unresolved:.1%}',
+        f'asymmetric unresolved share: {asym_low_unresolved:.1%} → {asym_high_unresolved:.1%}',
+    ], fill='#cbd5e1', font_size=15, line_height=22))
+    lines.append(_paragraph(782, summary_top + 158, [
+        f'Unity stays hotter: grid late {unity_low_grid:.1%} → {unity_high_grid:.1%}.',
+        f'Asymmetric cools harder: {asym_low_grid:.1%} → {asym_high_grid:.1%}.',
+        'Some low-budget drama was cutoff noise, but the repeated center critical point still leaves the more persistent slow core.',
+    ], fill='#9ec5ff', font_size=13, line_height=18))
+
+    legend_top = height - 102
+    lines.append(f'<rect x="{left}" y="{legend_top - 24}" width="{width - left - 42}" height="72" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<rect x="{left + 18}" y="{legend_top + 8}" width="220" height="18" rx="9" fill="url(#lateLegend)" stroke="#475569" stroke-width="1"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top + 44}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
+    lines.append(f'<text x="{left + 238}" y="{legend_top + 44}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
+    lines.append(_paragraph(left + 280, legend_top + 6, [f'Orange intensity = local tail-or-cutoff share (≥ {late_threshold} steps or unresolved).', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin.'], fill='#dbeafe', font_size=13, line_height=18))
     lines.append('</svg>')
 
     output = Path(output)
