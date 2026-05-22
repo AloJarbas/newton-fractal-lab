@@ -9,8 +9,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
+from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -530,6 +530,113 @@ def main() -> None:
     ]
     (REPORTS / "asymmetric-cubic.md").write_text("\n".join(cubic_lines) + "\n")
 
+    split_critical = split_critical_asymmetric_cubic()
+    split_samples = sample_cubic_grid(split_critical, CUBIC_GRID, CUBIC_GRID, max_iter=40)
+    split_stats = cubic_basin_summary(split_critical, CUBIC_GRID, CUBIC_GRID, split_samples)
+    split_rows = scan_critical_distance(
+        split_critical,
+        width=CUBIC_GRID,
+        height=CUBIC_GRID,
+        max_iter=40,
+        bands=CUBIC_BANDS,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+    )
+
+    asym_contrast_svg = ART / "asymmetric-cubic-geometry-contrast.svg"
+    asym_contrast_png = ART / "asymmetric-cubic-geometry-contrast.png"
+    render_asymmetric_cubic_contrast_svg(
+        asymmetric,
+        asymmetric_stats,
+        asymmetric_samples,
+        asymmetric_rows,
+        split_critical,
+        split_stats,
+        split_samples,
+        split_rows,
+        output=asym_contrast_svg,
+    )
+    export_png_from_svg(asym_contrast_svg, asym_contrast_png, size=2200, dpi=300)
+
+    with (ART / "asymmetric-cubic-geometry-contrast.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "band_index",
+                "distance_min",
+                "distance_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "dominant_share",
+                "share_root_0",
+                "share_root_1",
+                "share_root_2",
+            ],
+        )
+        writer.writeheader()
+        for row in asymmetric_rows + split_rows:
+            writer.writerow(
+                {
+                    "polynomial": row.polynomial_slug,
+                    "band_index": row.band_index,
+                    "distance_min": row.distance_min,
+                    "distance_max": row.distance_max,
+                    "sample_count": row.sample_count,
+                    "mean_iterations": row.mean_iterations,
+                    "late_fraction": row.late_fraction,
+                    "dominant_share": row.dominant_share,
+                    "share_root_0": row.basin_shares[0],
+                    "share_root_1": row.basin_shares[1],
+                    "share_root_2": row.basin_shares[2],
+                }
+            )
+
+    split_critical_points = cubic_critical_points(split_critical)
+    hottest_split = max(split_rows, key=lambda row: row.late_fraction)
+    strongest_split = max(split_rows, key=lambda row: row.dominant_share)
+    asym_contrast_lines = [
+        "# Asymmetric cubic geometry contrast",
+        "",
+        "This sidecar keeps the repo honest about the next loophole.",
+        "",
+        "One asymmetric cubic was enough to show that the unity-family symmetry was not universal.",
+        "It was not enough to claim that symmetry breaking always produces the same kind of Newton geometry.",
+        "",
+        "This pass compares the repo's existing asymmetric cubic against one second asymmetric cubic chosen for a genuinely different critical-point layout.",
+        "",
+        "## The new cubic",
+        "",
+        "```text",
+        "p_s(z) = (z - 1)(z - (-0.35 + 0.92i))(z - (-0.30 - 0.88i))",
+        "```",
+        "",
+        f"- expanded coefficients: z^3 + ({split_critical.coefficients[1].real:+.3f} {split_critical.coefficients[1].imag:+.3f}i) z^2 + ({split_critical.coefficients[2].real:+.3f} {split_critical.coefficients[2].imag:+.3f}i) z + ({split_critical.coefficients[3].real:+.3f} {split_critical.coefficients[3].imag:+.3f}i)",
+        f"- critical points: {split_critical_points[0].real:+.3f} {split_critical_points[0].imag:+.3f}i and {split_critical_points[1].real:+.3f} {split_critical_points[1].imag:+.3f}i",
+        f"- basin shares on the sampled square: {split_stats.basin_shares[0]:.1%}, {split_stats.basin_shares[1]:.1%}, {split_stats.basin_shares[2]:.1%}",
+        "",
+        "## Main read",
+        "",
+        f"- the existing asymmetric cubic still becomes a winner-take-most square: its largest basin share is {max(asymmetric_stats.basin_shares):.1%}",
+        f"- the split-critical cubic does not: its largest basin share is only {max(split_stats.basin_shares):.1%}, so the sampled square stays much closer to a three-way fight",
+        f"- the existing asymmetric cubic cools its nearest-critical band down to {asymmetric_rows[0].late_fraction:.1%} late-tail share at this budget",
+        f"- the split-critical cubic keeps that same nearest-critical band far hotter at {split_rows[0].late_fraction:.1%}",
+        f"- even away from the center, the split-critical cubic never lets one root own much more than {strongest_split.dominant_share:.1%} of a band, while the existing asymmetric cubic reaches {max(row.dominant_share for row in asymmetric_rows):.1%}",
+        "",
+        "## Why this earns a second asymmetric lane",
+        "",
+        "The first asymmetric cubic taught one good lesson: broken symmetry can turn a clean one-third split into a heavily skewed contest.",
+        "",
+        "The new cubic teaches a different one.",
+        "",
+        "Broken symmetry does not have to collapse into one dominant basin and a cooled center. If the critical points stay split near the middle of the square, the near-critical tension can remain hot while the basin shares stay comparatively balanced.",
+        "",
+        f"That is the real upgrade here. The hottest near-critical band in the new cubic is {hottest_split.late_fraction:.1%}, not because the repo changed the budget or the window, but because the critical geometry itself stayed competitive.",
+        "",
+        "Open `art/asymmetric-cubic-geometry-contrast.svg`, `art/asymmetric-cubic-geometry-contrast.png`, `art/asymmetric-cubic-geometry-contrast.csv`, and `notebooks/asymmetric_cubic_geometry_contrast.ipynb` next.",
+    ]
+    (REPORTS / "asymmetric-cubic-geometry-contrast.md").write_text("\n".join(asym_contrast_lines) + "\n")
+
     unity_low_tiles = scan_cubic_late_tail_tiles(
         unity,
         width=120,
@@ -714,7 +821,7 @@ def main() -> None:
     (REPORTS / "cubic-budget-persistence.md").write_text("\n".join(cubic_budget_lines) + "\n")
 
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, late-tail map, cubic comparisons, and reports")
+    print("generated gallery, scan figures, late-tail map, asymmetric cubic contrasts, and reports")
 
 
 if __name__ == "__main__":

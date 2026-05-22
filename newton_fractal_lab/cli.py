@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, unity_cubic
-from .render import export_png_from_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
+from .render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -91,6 +91,16 @@ def main() -> None:
     cubic_parser.add_argument("--output", type=Path, default=None)
     cubic_parser.add_argument("--png-output", type=Path, default=None)
     cubic_parser.add_argument("--title", type=str, default=None)
+
+    asymmetric_contrast_parser = subparsers.add_parser("asymmetric-cubic-contrast", help="compare two different asymmetric cubic stories")
+    asymmetric_contrast_parser.add_argument("--width", type=int, default=180)
+    asymmetric_contrast_parser.add_argument("--height", type=int, default=180)
+    asymmetric_contrast_parser.add_argument("--max-iter", type=int, default=40)
+    asymmetric_contrast_parser.add_argument("--bands", type=int, default=8)
+    asymmetric_contrast_parser.add_argument("--late-threshold", type=int, default=10)
+    asymmetric_contrast_parser.add_argument("--output", type=Path, default=None)
+    asymmetric_contrast_parser.add_argument("--png-output", type=Path, default=None)
+    asymmetric_contrast_parser.add_argument("--title", type=str, default=None)
 
     cubic_budget_parser = subparsers.add_parser("cubic-budget-persistence", help="compare low- and high-budget late-tail persistence for the unity and asymmetric cubics")
     cubic_budget_parser.add_argument("--width", type=int, default=120)
@@ -471,6 +481,60 @@ def main() -> None:
             "unity_high": summarize(unity_high_tiles),
             "asymmetric_low": summarize(asymmetric_low_tiles),
             "asymmetric_high": summarize(asymmetric_high_tiles),
+        }
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "asymmetric-cubic-contrast":
+        first = asymmetric_cubic()
+        second = split_critical_asymmetric_cubic()
+        first_samples = sample_cubic_grid(first, args.width, args.height, max_iter=args.max_iter)
+        second_samples = sample_cubic_grid(second, args.width, args.height, max_iter=args.max_iter)
+        first_stats = cubic_basin_summary(first, args.width, args.height, first_samples)
+        second_stats = cubic_basin_summary(second, args.width, args.height, second_samples)
+        first_rows = scan_critical_distance(
+            first,
+            width=args.width,
+            height=args.height,
+            max_iter=args.max_iter,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+        )
+        second_rows = scan_critical_distance(
+            second,
+            width=args.width,
+            height=args.height,
+            max_iter=args.max_iter,
+            bands=args.bands,
+            late_threshold=args.late_threshold,
+        )
+        if args.output is not None:
+            render_asymmetric_cubic_contrast_svg(
+                first,
+                first_stats,
+                first_samples,
+                first_rows,
+                second,
+                second_stats,
+                second_samples,
+                second_rows,
+                output=args.output,
+                title=args.title,
+                max_iter=args.max_iter,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output, size=2200, dpi=300)
+        payload = {
+            "asymmetric_cubic": {
+                "mean_iterations": round(first_stats.mean_iterations, 6),
+                "basin_shares": [round(share, 6) for share in first_stats.basin_shares],
+                "inner_late_fraction": round(first_rows[0].late_fraction, 6),
+            },
+            "split_critical_asymmetric_cubic": {
+                "mean_iterations": round(second_stats.mean_iterations, 6),
+                "basin_shares": [round(share, 6) for share in second_stats.basin_shares],
+                "inner_late_fraction": round(second_rows[0].late_fraction, 6),
+            },
         }
         print(json.dumps(payload, indent=2))
         return

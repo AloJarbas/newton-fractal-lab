@@ -128,6 +128,18 @@ def asymmetric_cubic() -> CubicPolynomial:
     )
 
 
+def split_critical_asymmetric_cubic() -> CubicPolynomial:
+    return cubic_from_roots(
+        "split-critical asymmetric cubic",
+        "split-critical-asymmetric-cubic",
+        (
+            1.0 + 0.0j,
+            complex(-0.35, 0.92),
+            complex(-0.30, -0.88),
+        ),
+    )
+
+
 def evaluate_cubic(polynomial: CubicPolynomial, z: complex) -> complex:
     value = 0.0 + 0.0j
     for coefficient in polynomial.coefficients:

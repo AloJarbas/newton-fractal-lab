@@ -11,6 +11,7 @@ from newton_fractal_lab.cubic import (
     sample_cubic_grid,
     scan_critical_distance,
     scan_cubic_late_tail_tiles,
+    split_critical_asymmetric_cubic,
     unity_cubic,
 )
 
@@ -61,6 +62,24 @@ class CubicComparisonTests(unittest.TestCase):
         asym_rows = scan_critical_distance(asymmetric_cubic(), width=72, height=72, max_iter=24, bands=6, late_threshold=10, include_unresolved_in_late=True)
         self.assertGreater(unity_rows[0].late_fraction, 0.55)
         self.assertLess(asym_rows[0].late_fraction, 0.2)
+
+    def test_split_critical_roots_are_actual_roots(self) -> None:
+        polynomial = split_critical_asymmetric_cubic()
+        for root in polynomial.roots:
+            self.assertLess(abs(evaluate_cubic(polynomial, root)), 1e-9)
+
+    def test_split_critical_cubic_keeps_balanced_basin_shares(self) -> None:
+        polynomial = split_critical_asymmetric_cubic()
+        samples = sample_cubic_grid(polynomial, 72, 72, max_iter=30)
+        stats = cubic_basin_summary(polynomial, 72, 72, samples)
+        self.assertLess(max(stats.basin_shares) - min(stats.basin_shares), 0.12)
+        self.assertGreater(min(stats.basin_shares), 0.25)
+
+    def test_split_critical_cubic_keeps_hotter_near_critical_lane(self) -> None:
+        split_rows = scan_critical_distance(split_critical_asymmetric_cubic(), width=72, height=72, max_iter=30, bands=6, late_threshold=10, include_unresolved_in_late=True)
+        asym_rows = scan_critical_distance(asymmetric_cubic(), width=72, height=72, max_iter=30, bands=6, late_threshold=10, include_unresolved_in_late=True)
+        self.assertGreater(split_rows[0].late_fraction, asym_rows[0].late_fraction + 0.12)
+        self.assertLess(split_rows[-1].dominant_share, 0.65)
 
 
 if __name__ == "__main__":

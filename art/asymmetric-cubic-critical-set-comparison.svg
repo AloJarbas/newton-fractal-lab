@@ -11775,96 +11775,99 @@
 <text x="742" y="832" fill="#e2e8f0" font-size="18" font-family="Helvetica, Arial, sans-serif">mean 6.41 · late tail 6.1% · shares 25.6% / 16.4% / 58.0%</text>
 <rect x="58" y="848" width="660" height="320" rx="20" fill="#020617" stroke="#334155" stroke-width="1.3"/>
 <text x="76" y="878" fill="#e5eefc" font-size="21" font-family="Helvetica, Arial, sans-serif" font-weight="700">Late tail by critical distance</text>
-<text x="76" y="904" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">The unity cubic is hottest right on top of its repeated center critical point. The asymmetric cubic spreads that tension out and cools the core.</text>
-<line x1="142.00" y1="1114.00" x2="694.00" y2="1114.00" stroke="#1f2937" stroke-width="1"/>
+<text x="76" y="904" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">The unity cubic is hottest right on top of its repeated center</text>
+<text x="76" y="922" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">critical point. The asymmetric cubic spreads that tension out</text>
+<text x="76" y="940" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">and cools the core.</text>
+<line x1="142.00" y1="1114.00" x2="676.00" y2="1114.00" stroke="#1f2937" stroke-width="1"/>
 <text x="130.00" y="1118.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.00</text>
-<line x1="142.00" y1="1067.00" x2="694.00" y2="1067.00" stroke="#1f2937" stroke-width="1"/>
-<text x="130.00" y="1071.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.24</text>
-<line x1="142.00" y1="1020.00" x2="694.00" y2="1020.00" stroke="#1f2937" stroke-width="1"/>
-<text x="130.00" y="1024.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.48</text>
-<line x1="142.00" y1="973.00" x2="694.00" y2="973.00" stroke="#1f2937" stroke-width="1"/>
-<text x="130.00" y="977.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.72</text>
-<line x1="142.00" y1="926.00" x2="694.00" y2="926.00" stroke="#1f2937" stroke-width="1"/>
-<text x="130.00" y="930.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.96</text>
-<line x1="142.00" y1="926.00" x2="142.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<line x1="142.00" y1="1076.00" x2="676.00" y2="1076.00" stroke="#1f2937" stroke-width="1"/>
+<text x="130.00" y="1080.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.24</text>
+<line x1="142.00" y1="1038.00" x2="676.00" y2="1038.00" stroke="#1f2937" stroke-width="1"/>
+<text x="130.00" y="1042.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.48</text>
+<line x1="142.00" y1="1000.00" x2="676.00" y2="1000.00" stroke="#1f2937" stroke-width="1"/>
+<text x="130.00" y="1004.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.72</text>
+<line x1="142.00" y1="962.00" x2="676.00" y2="962.00" stroke="#1f2937" stroke-width="1"/>
+<text x="130.00" y="966.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.96</text>
+<line x1="142.00" y1="962.00" x2="142.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
 <text x="142.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.00</text>
-<line x1="280.00" y1="926.00" x2="280.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="280.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.57</text>
-<line x1="418.00" y1="926.00" x2="418.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="418.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.14</text>
-<line x1="556.00" y1="926.00" x2="556.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="556.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.71</text>
-<line x1="694.00" y1="926.00" x2="694.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="694.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">2.28</text>
-<polyline fill="none" stroke="#60a5fa" stroke-width="3" points="176.25,946.14 244.75,1072.76 313.24,1069.89 381.74,1090.38 450.24,1086.07 518.74,1085.97 587.24,1090.27 655.73,1097.07"/>
-<circle cx="176.25" cy="946.14" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="244.75" cy="1072.76" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="313.24" cy="1069.89" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="381.74" cy="1090.38" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="450.24" cy="1086.07" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="518.74" cy="1085.97" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="587.24" cy="1090.27" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="655.73" cy="1097.07" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<polyline fill="none" stroke="#f59e0b" stroke-width="3" points="178.80,1091.26 252.40,1105.54 326.00,1104.94 399.60,1102.19 473.20,1101.97 546.80,1093.49 620.40,1103.78 694.00,1114.00"/>
-<circle cx="178.80" cy="1091.26" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="252.40" cy="1105.54" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="326.00" cy="1104.94" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="399.60" cy="1102.19" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="473.20" cy="1101.97" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="546.80" cy="1093.49" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="620.40" cy="1103.78" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="694.00" cy="1114.00" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<text x="418.00" y="1154.00" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>
+<line x1="275.50" y1="962.00" x2="275.50" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="275.50" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.57</text>
+<line x1="409.00" y1="962.00" x2="409.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="409.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.14</text>
+<line x1="542.50" y1="962.00" x2="542.50" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="542.50" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.71</text>
+<line x1="676.00" y1="962.00" x2="676.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="676.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">2.28</text>
+<polyline fill="none" stroke="#60a5fa" stroke-width="3" points="175.13,978.29 241.40,1080.66 307.66,1078.33 373.93,1094.90 440.19,1091.42 506.45,1091.34 572.72,1094.81 638.98,1100.31"/>
+<circle cx="175.13" cy="978.29" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="241.40" cy="1080.66" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="307.66" cy="1078.33" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="373.93" cy="1094.90" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="440.19" cy="1091.42" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="506.45" cy="1091.34" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="572.72" cy="1094.81" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="638.98" cy="1100.31" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<polyline fill="none" stroke="#f59e0b" stroke-width="3" points="177.60,1095.62 248.80,1107.16 320.00,1106.68 391.20,1104.45 462.40,1104.27 533.60,1097.41 604.80,1105.73 676.00,1114.00"/>
+<circle cx="177.60" cy="1095.62" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="248.80" cy="1107.16" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="320.00" cy="1106.68" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="391.20" cy="1104.45" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="462.40" cy="1104.27" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="533.60" cy="1097.41" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="604.80" cy="1105.73" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="676.00" cy="1114.00" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<text x="409.00" y="1154.00" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>
 <line x1="78" y1="1078" x2="106" y2="1078" stroke="#60a5fa" stroke-width="3"/>
 <text x="114" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">unity cubic</text>
-<line x1="270" y1="1078" x2="298" y2="1078" stroke="#f59e0b" stroke-width="3"/>
-<text x="306" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>
+<line x1="390" y1="1078" x2="418" y2="1078" stroke="#f59e0b" stroke-width="3"/>
+<text x="426" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>
 <rect x="762" y="848" width="660" height="320" rx="20" fill="#020617" stroke="#334155" stroke-width="1.3"/>
 <text x="780" y="878" fill="#e5eefc" font-size="21" font-family="Helvetica, Arial, sans-serif" font-weight="700">Dominant basin share by critical distance</text>
-<text x="780" y="904" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">Symmetry breaking does not just move the critical set. It also lets one root own much more of the sampled square.</text>
-<line x1="846.00" y1="1114.00" x2="1398.00" y2="1114.00" stroke="#1f2937" stroke-width="1"/>
+<text x="780" y="904" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">Symmetry breaking does not just move the critical set. It also</text>
+<text x="780" y="922" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">lets one root own much more of the sampled square.</text>
+<line x1="846.00" y1="1114.00" x2="1380.00" y2="1114.00" stroke="#1f2937" stroke-width="1"/>
 <text x="834.00" y="1118.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.28</text>
-<line x1="846.00" y1="1067.00" x2="1398.00" y2="1067.00" stroke="#1f2937" stroke-width="1"/>
-<text x="834.00" y="1071.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.47</text>
-<line x1="846.00" y1="1020.00" x2="1398.00" y2="1020.00" stroke="#1f2937" stroke-width="1"/>
-<text x="834.00" y="1024.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.67</text>
-<line x1="846.00" y1="973.00" x2="1398.00" y2="973.00" stroke="#1f2937" stroke-width="1"/>
-<text x="834.00" y="977.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.86</text>
-<line x1="846.00" y1="926.00" x2="1398.00" y2="926.00" stroke="#1f2937" stroke-width="1"/>
-<text x="834.00" y="930.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">1.05</text>
-<line x1="846.00" y1="926.00" x2="846.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<line x1="846.00" y1="1071.50" x2="1380.00" y2="1071.50" stroke="#1f2937" stroke-width="1"/>
+<text x="834.00" y="1075.50" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.47</text>
+<line x1="846.00" y1="1029.00" x2="1380.00" y2="1029.00" stroke="#1f2937" stroke-width="1"/>
+<text x="834.00" y="1033.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.67</text>
+<line x1="846.00" y1="986.50" x2="1380.00" y2="986.50" stroke="#1f2937" stroke-width="1"/>
+<text x="834.00" y="990.50" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">0.86</text>
+<line x1="846.00" y1="944.00" x2="1380.00" y2="944.00" stroke="#1f2937" stroke-width="1"/>
+<text x="834.00" y="948.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="end" font-family="Helvetica, Arial, sans-serif">1.05</text>
+<line x1="846.00" y1="944.00" x2="846.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
 <text x="846.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.00</text>
-<line x1="984.00" y1="926.00" x2="984.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="984.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.57</text>
-<line x1="1122.00" y1="926.00" x2="1122.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="1122.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.14</text>
-<line x1="1260.00" y1="926.00" x2="1260.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="1260.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.71</text>
-<line x1="1398.00" y1="926.00" x2="1398.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
-<text x="1398.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">2.28</text>
-<line x1="846.00" y1="1100.98" x2="1398.00" y2="1100.98" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="7 6"/>
-<text x="1390.00" y="1093.98" fill="#e2e8f0" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">equal share = 1/3</text>
-<polyline fill="none" stroke="#60a5fa" stroke-width="3" points="880.25,1100.26 948.75,1100.81 1017.24,1100.79 1085.74,1100.68 1154.24,1100.89 1222.74,1100.86 1291.24,1092.60 1359.73,1067.92"/>
-<circle cx="880.25" cy="1100.26" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="948.75" cy="1100.81" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1017.24" cy="1100.79" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1085.74" cy="1100.68" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1154.24" cy="1100.89" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1222.74" cy="1100.86" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1291.24" cy="1092.60" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<circle cx="1359.73" cy="1067.92" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
-<polyline fill="none" stroke="#f59e0b" stroke-width="3" points="882.80,1048.81 956.40,1039.93 1030.00,1064.10 1103.60,1064.57 1177.20,1018.49 1250.80,1005.18 1324.40,967.99 1398.00,938.21"/>
-<circle cx="882.80" cy="1048.81" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="956.40" cy="1039.93" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1030.00" cy="1064.10" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1103.60" cy="1064.57" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1177.20" cy="1018.49" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1250.80" cy="1005.18" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1324.40" cy="967.99" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<circle cx="1398.00" cy="938.21" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
-<text x="1122.00" y="1154.00" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>
+<line x1="979.50" y1="944.00" x2="979.50" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="979.50" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">0.57</text>
+<line x1="1113.00" y1="944.00" x2="1113.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="1113.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.14</text>
+<line x1="1246.50" y1="944.00" x2="1246.50" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="1246.50" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1.71</text>
+<line x1="1380.00" y1="944.00" x2="1380.00" y2="1114.00" stroke="#16202f" stroke-width="1"/>
+<text x="1380.00" y="1138.00" fill="#cbd5e1" font-size="15" font-weight="600" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">2.28</text>
+<line x1="846.00" y1="1102.23" x2="1380.00" y2="1102.23" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="7 6"/>
+<text x="1362.00" y="1095.23" fill="#e2e8f0" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">equal share = 1/3</text>
+<polyline fill="none" stroke="#60a5fa" stroke-width="3" points="879.13,1101.57 945.40,1102.07 1011.66,1102.06 1077.93,1101.96 1144.19,1102.14 1210.45,1102.12 1276.72,1094.65 1342.98,1072.33"/>
+<circle cx="879.13" cy="1101.57" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="945.40" cy="1102.07" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1011.66" cy="1102.06" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1077.93" cy="1101.96" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1144.19" cy="1102.14" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1210.45" cy="1102.12" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1276.72" cy="1094.65" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<circle cx="1342.98" cy="1072.33" r="4.5" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+<polyline fill="none" stroke="#f59e0b" stroke-width="3" points="881.60,1055.05 952.80,1047.02 1024.00,1068.88 1095.20,1069.30 1166.40,1027.63 1237.60,1015.60 1308.80,981.97 1380.00,955.04"/>
+<circle cx="881.60" cy="1055.05" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="952.80" cy="1047.02" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1024.00" cy="1068.88" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1095.20" cy="1069.30" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1166.40" cy="1027.63" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1237.60" cy="1015.60" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1308.80" cy="981.97" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<circle cx="1380.00" cy="955.04" r="4.5" fill="#dbeafe" stroke="#f59e0b" stroke-width="2"/>
+<text x="1113.00" y="1154.00" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>
 <line x1="782" y1="1078" x2="810" y2="1078" stroke="#60a5fa" stroke-width="3"/>
 <text x="818" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">unity cubic</text>
-<line x1="974" y1="1078" x2="1002" y2="1078" stroke="#f59e0b" stroke-width="3"/>
-<text x="1010" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>
+<line x1="1094" y1="1078" x2="1122" y2="1078" stroke="#f59e0b" stroke-width="3"/>
+<text x="1130" y="1082" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>
 </svg>

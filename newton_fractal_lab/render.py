@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import textwrap
+import xml.etree.ElementTree as ET
 
 from .core import IterationHistogram, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
 from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
@@ -818,8 +820,8 @@ def render_cubic_comparison_svg(
         top=chart_top,
         width=chart_width,
         height=chart_height,
-        unity_rows=unity_rows,
-        asymmetric_rows=asymmetric_rows,
+        rows_a=unity_rows,
+        rows_b=asymmetric_rows,
         value_getter=lambda row: row.late_fraction,
         y_range=(0.0, max(0.9, _max_value(unity_rows, asymmetric_rows, lambda row: row.late_fraction) * 1.12)),
     )
@@ -832,8 +834,91 @@ def render_cubic_comparison_svg(
         top=chart_top,
         width=chart_width,
         height=chart_height,
-        unity_rows=unity_rows,
-        asymmetric_rows=asymmetric_rows,
+        rows_a=unity_rows,
+        rows_b=asymmetric_rows,
+        value_getter=lambda row: row.dominant_share,
+        y_range=(0.28, 1.05),
+        reference=1.0 / 3.0,
+        reference_label='equal share = 1/3',
+    )
+
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_asymmetric_cubic_contrast_svg(
+    first_polynomial: CubicPolynomial,
+    first_stats: CubicBasinStats,
+    first_samples,
+    first_rows: list[CriticalDistanceBandRow],
+    second_polynomial: CubicPolynomial,
+    second_stats: CubicBasinStats,
+    second_samples,
+    second_rows: list[CriticalDistanceBandRow],
+    *,
+    output: str | Path,
+    title: str | None = None,
+    max_iter: int = 40,
+) -> None:
+    width = 1480
+    height = 1260
+    panel_gap = 44
+    top = 116
+    map_size = 640
+    left = 58
+    map_left_2 = left + map_size + panel_gap
+    chart_top = top + map_size + 92
+    chart_width = 660
+    chart_height = 320
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Not every asymmetric cubic tells the same Newton story")}</text>',
+        '<text x="58" y="80" fill="#9ec5ff" font-size="17" font-family="Helvetica, Arial, sans-serif">Both cubics break the unity-family symmetry. One turns into a winner-take-most square. The other keeps the critical competition near the center alive.</text>',
+    ]
+
+    _append_cubic_basin_panel(lines, first_polynomial, first_stats, first_samples, left=left, top=top, size=map_size, max_iter=max_iter)
+    _append_cubic_basin_panel(lines, second_polynomial, second_stats, second_samples, left=map_left_2, top=top, size=map_size, max_iter=max_iter)
+
+    _append_critical_distance_chart(
+        lines,
+        title='Late tail by critical distance',
+        subtitle='The existing asymmetric cubic cools the core. The split-critical cubic keeps a much hotter near-critical lane instead of washing it out.',
+        y_label='late fraction (≥10 steps)',
+        left=left,
+        top=chart_top,
+        width=chart_width,
+        height=chart_height,
+        rows_a=first_rows,
+        rows_b=second_rows,
+        label_a=first_polynomial.name,
+        label_b=second_polynomial.name,
+        value_getter=lambda row: row.late_fraction,
+        y_range=(0.0, max(0.9, _max_value(first_rows, second_rows, lambda row: row.late_fraction) * 1.12)),
+    )
+    _append_critical_distance_chart(
+        lines,
+        title='Dominant basin share by critical distance',
+        subtitle='Breaking symmetry is not one story. One cubic lets a single root dominate. The split-critical cubic stays much closer to a three-way fight.',
+        y_label='largest basin share in band',
+        left=left + chart_width + panel_gap,
+        top=chart_top,
+        width=chart_width,
+        height=chart_height,
+        rows_a=first_rows,
+        rows_b=second_rows,
+        label_a=first_polynomial.name,
+        label_b=second_polynomial.name,
         value_getter=lambda row: row.dominant_share,
         y_range=(0.28, 1.05),
         reference=1.0 / 3.0,
@@ -953,8 +1038,8 @@ def render_cubic_budget_persistence_svg(
         top=top,
         width=660,
         height=300,
-        unity_rows=unity_low_rows,
-        asymmetric_rows=asymmetric_low_rows,
+        rows_a=unity_low_rows,
+        rows_b=asymmetric_low_rows,
         value_getter=lambda row: row.late_fraction,
         y_range=(0.0, max(1.0, _max_value(unity_low_rows, asymmetric_low_rows, lambda row: row.late_fraction) * 1.08)),
     )
@@ -967,8 +1052,8 @@ def render_cubic_budget_persistence_svg(
         top=top + 338,
         width=660,
         height=300,
-        unity_rows=unity_high_rows,
-        asymmetric_rows=asymmetric_high_rows,
+        rows_a=unity_high_rows,
+        rows_b=asymmetric_high_rows,
         value_getter=lambda row: row.late_fraction,
         y_range=(0.0, max(1.0, _max_value(unity_high_rows, asymmetric_high_rows, lambda row: row.late_fraction) * 1.08)),
     )
@@ -1056,20 +1141,25 @@ def _append_critical_distance_chart(
     top: float,
     width: float,
     height: float,
-    unity_rows: list[CriticalDistanceBandRow],
-    asymmetric_rows: list[CriticalDistanceBandRow],
+    rows_a: list[CriticalDistanceBandRow],
+    rows_b: list[CriticalDistanceBandRow],
     value_getter,
     y_range: tuple[float, float],
     reference: float | None = None,
     reference_label: str | None = None,
+    label_a: str = 'unity cubic',
+    label_b: str = 'asymmetric cubic',
+    color_a: str = '#60a5fa',
+    color_b: str = '#f59e0b',
 ) -> None:
     pad_left = 84
-    pad_right = 24
-    plot_top = top + 78
+    pad_right = 42
+    subtitle_lines = _wrap_svg_lines(subtitle, width=max(44, int((width - pad_left - pad_right) / 8.6)))
+    plot_top = top + 78 + max(0, len(subtitle_lines) - 1) * 18
     plot_bottom = top + height - 54
     plot_left = left + pad_left
     plot_right = left + width - pad_right
-    x_max = max([row.distance_mid for row in unity_rows + asymmetric_rows if row.sample_count > 0] or [1.0])
+    x_max = max([row.distance_mid for row in rows_a + rows_b if row.sample_count > 0] or [1.0])
     y_min, y_max = y_range
 
     def x_for(value: float) -> float:
@@ -1082,7 +1172,8 @@ def _append_critical_distance_chart(
 
     lines.append(f'<rect x="{left}" y="{top}" width="{width}" height="{height}" rx="20" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
     lines.append(f'<text x="{left + 18}" y="{top + 30}" fill="#e5eefc" font-size="21" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title)}</text>')
-    lines.append(f'<text x="{left + 18}" y="{top + 56}" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">{_escape(subtitle)}</text>')
+    for index, line in enumerate(subtitle_lines):
+        lines.append(f'<text x="{left + 18}" y="{top + 56 + index * 18}" fill="#9ec5ff" font-size="14" font-family="Helvetica, Arial, sans-serif">{_escape(line)}</text>')
 
     for tick in range(5):
         frac = tick / 4
@@ -1102,18 +1193,18 @@ def _append_critical_distance_chart(
         reference_y = y_for(reference)
         lines.append(f'<line x1="{plot_left:.2f}" y1="{reference_y:.2f}" x2="{plot_right:.2f}" y2="{reference_y:.2f}" stroke="#e2e8f0" stroke-width="1.6" stroke-dasharray="7 6"/>')
         if reference_label:
-            lines.append(f'<text x="{plot_right - 8:.2f}" y="{reference_y - 7:.2f}" fill="#e2e8f0" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{_escape(reference_label)}</text>')
+            lines.append(f'<text x="{plot_right - 18:.2f}" y="{reference_y - 7:.2f}" fill="#e2e8f0" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">{_escape(reference_label)}</text>')
 
-    _append_chart_series(lines, unity_rows, x_for=x_for, y_for=y_for, value_getter=value_getter, color='#60a5fa')
-    _append_chart_series(lines, asymmetric_rows, x_for=x_for, y_for=y_for, value_getter=value_getter, color='#f59e0b')
+    _append_chart_series(lines, rows_a, x_for=x_for, y_for=y_for, value_getter=value_getter, color=color_a)
+    _append_chart_series(lines, rows_b, x_for=x_for, y_for=y_for, value_getter=value_getter, color=color_b)
 
     lines.append(f'<text x="{(plot_left + plot_right) / 2:.2f}" y="{top + height - 14:.2f}" fill="#cbd5e1" font-size="15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">distance to nearest critical point</text>')
 
     legend_y = top + height - 90
-    lines.append(f'<line x1="{left + 20}" y1="{legend_y}" x2="{left + 48}" y2="{legend_y}" stroke="#60a5fa" stroke-width="3"/>')
-    lines.append(f'<text x="{left + 56}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">unity cubic</text>')
-    lines.append(f'<line x1="{left + 212}" y1="{legend_y}" x2="{left + 240}" y2="{legend_y}" stroke="#f59e0b" stroke-width="3"/>')
-    lines.append(f'<text x="{left + 248}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">asymmetric cubic</text>')
+    lines.append(f'<line x1="{left + 20}" y1="{legend_y}" x2="{left + 48}" y2="{legend_y}" stroke="{color_a}" stroke-width="3"/>')
+    lines.append(f'<text x="{left + 56}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">{_escape(label_a)}</text>')
+    lines.append(f'<line x1="{left + 332}" y1="{legend_y}" x2="{left + 360}" y2="{legend_y}" stroke="{color_b}" stroke-width="3"/>')
+    lines.append(f'<text x="{left + 368}" y="{legend_y + 4}" fill="#dbeafe" font-size="16" font-family="Helvetica, Arial, sans-serif">{_escape(label_b)}</text>')
 
 
 def _append_chart_series(lines: list[str], rows: list[CriticalDistanceBandRow], *, x_for, y_for, value_getter, color: str) -> None:
@@ -1126,6 +1217,11 @@ def _append_chart_series(lines: list[str], rows: list[CriticalDistanceBandRow], 
         x = x_for(row.distance_mid)
         y = y_for(value_getter(row))
         lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="4.5" fill="#dbeafe" stroke="{color}" stroke-width="2"/>')
+
+
+def _wrap_svg_lines(text: str, *, width: int) -> list[str]:
+    lines = textwrap.wrap(text, width=width, break_long_words=False, break_on_hyphens=False)
+    return lines or [text]
 
 
 def _max_value(unity_rows: list[CriticalDistanceBandRow], asymmetric_rows: list[CriticalDistanceBandRow], getter) -> float:
@@ -1173,13 +1269,14 @@ def export_png_from_svg(svg_path: str | Path, png_path: str | Path, *, size: int
         return False
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        padded_svg = _square_pad_svg_for_quicklook(svg_file, Path(tmpdir) / svg_file.name)
         subprocess.run(
-            [qlmanage, '-t', '-s', str(size), '-o', tmpdir, str(svg_file)],
+            [qlmanage, '-t', '-s', str(size), '-o', tmpdir, str(padded_svg)],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        generated = Path(tmpdir) / f'{svg_file.name}.png'
+        generated = Path(tmpdir) / f'{padded_svg.name}.png'
         if not generated.exists():
             raise FileNotFoundError(f'Quick Look did not generate {generated}')
         png_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1194,6 +1291,23 @@ def export_png_from_svg(svg_path: str | Path, png_path: str | Path, *, size: int
             stderr=subprocess.DEVNULL,
         )
     return True
+
+
+def _square_pad_svg_for_quicklook(svg_file: Path, destination: Path) -> Path:
+    tree = ET.parse(svg_file)
+    root = tree.getroot()
+    width = float(root.attrib.get('width', root.attrib['viewBox'].split()[2]))
+    height = float(root.attrib.get('height', root.attrib['viewBox'].split()[3]))
+    if abs(width - height) < 1.0e-9:
+        tree.write(destination, encoding='utf-8', xml_declaration=False)
+        return destination
+
+    square = int(max(width, height))
+    root.set('width', str(square))
+    root.set('height', str(square))
+    root.set('viewBox', f'0 0 {square} {square}')
+    tree.write(destination, encoding='utf-8', xml_declaration=False)
+    return destination
 
 
 def _fill_for(sample, power: int, max_iter: int) -> str:
