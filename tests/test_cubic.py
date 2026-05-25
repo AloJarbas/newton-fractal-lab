@@ -4,6 +4,7 @@ import unittest
 
 from newton_fractal_lab.cubic import (
     asymmetric_cubic,
+    compare_cubic_budget_persistence,
     cubic_basin_summary,
     cubic_critical_points,
     evaluate_cubic,
@@ -80,6 +81,27 @@ class CubicComparisonTests(unittest.TestCase):
         asym_rows = scan_critical_distance(asymmetric_cubic(), width=72, height=72, max_iter=30, bands=6, late_threshold=10, include_unresolved_in_late=True)
         self.assertGreater(split_rows[0].late_fraction, asym_rows[0].late_fraction + 0.12)
         self.assertLess(split_rows[-1].dominant_share, 0.65)
+
+    def test_cubic_budget_comparison_puts_split_critical_in_the_middle(self) -> None:
+        rows = compare_cubic_budget_persistence(
+            [unity_cubic(), asymmetric_cubic(), split_critical_asymmetric_cubic()],
+            width=72,
+            height=72,
+            low_budget=8,
+            high_budget=24,
+            late_threshold=10,
+            tile_cols=8,
+            tile_rows=8,
+            bands=6,
+        )
+        by_slug = {row.polynomial_slug: row for row in rows}
+        unity = by_slug["unity-cubic"]
+        asym = by_slug["asymmetric-cubic"]
+        split = by_slug["split-critical-asymmetric-cubic"]
+        self.assertGreater(unity.high_center_late, split.high_center_late)
+        self.assertGreater(split.high_center_late, asym.high_center_late)
+        self.assertGreater(unity.high_inner_band_late, split.high_inner_band_late)
+        self.assertGreater(split.high_inner_band_late, asym.high_inner_band_late)
 
 
 if __name__ == "__main__":

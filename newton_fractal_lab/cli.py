@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from .cubic import asymmetric_cubic, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
-from .render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .cubic import asymmetric_cubic, compare_cubic_budget_persistence, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
+from .render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -114,6 +114,19 @@ def main() -> None:
     cubic_budget_parser.add_argument("--output", type=Path, default=None)
     cubic_budget_parser.add_argument("--png-output", type=Path, default=None)
     cubic_budget_parser.add_argument("--title", type=str, default=None)
+
+    cubic_atlas_parser = subparsers.add_parser("cubic-persistence-atlas", help="compare low- and high-budget persistence across all three cubic lanes")
+    cubic_atlas_parser.add_argument("--width", type=int, default=120)
+    cubic_atlas_parser.add_argument("--height", type=int, default=120)
+    cubic_atlas_parser.add_argument("--tile-cols", type=int, default=12)
+    cubic_atlas_parser.add_argument("--tile-rows", type=int, default=12)
+    cubic_atlas_parser.add_argument("--bands", type=int, default=8)
+    cubic_atlas_parser.add_argument("--late-threshold", type=int, default=10)
+    cubic_atlas_parser.add_argument("--low-budget", type=int, default=8)
+    cubic_atlas_parser.add_argument("--high-budget", type=int, default=24)
+    cubic_atlas_parser.add_argument("--output", type=Path, default=None)
+    cubic_atlas_parser.add_argument("--png-output", type=Path, default=None)
+    cubic_atlas_parser.add_argument("--title", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -482,6 +495,73 @@ def main() -> None:
             "asymmetric_low": summarize(asymmetric_low_tiles),
             "asymmetric_high": summarize(asymmetric_high_tiles),
         }
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "cubic-persistence-atlas":
+        polynomials = [unity_cubic(), asymmetric_cubic(), split_critical_asymmetric_cubic()]
+        comparison_rows = compare_cubic_budget_persistence(
+            polynomials,
+            width=args.width,
+            height=args.height,
+            low_budget=args.low_budget,
+            high_budget=args.high_budget,
+            late_threshold=args.late_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+            bands=args.bands,
+        )
+        low_tiles_by_slug = {
+            polynomial.slug: scan_cubic_late_tail_tiles(
+                polynomial,
+                width=args.width,
+                height=args.height,
+                max_iter=args.low_budget,
+                late_threshold=args.late_threshold,
+                tile_cols=args.tile_cols,
+                tile_rows=args.tile_rows,
+            )
+            for polynomial in polynomials
+        }
+        high_tiles_by_slug = {
+            polynomial.slug: scan_cubic_late_tail_tiles(
+                polynomial,
+                width=args.width,
+                height=args.height,
+                max_iter=args.high_budget,
+                late_threshold=args.late_threshold,
+                tile_cols=args.tile_cols,
+                tile_rows=args.tile_rows,
+            )
+            for polynomial in polynomials
+        }
+        if args.output is not None:
+            render_cubic_persistence_atlas_svg(
+                low_tiles_by_slug=low_tiles_by_slug,
+                high_tiles_by_slug=high_tiles_by_slug,
+                comparison_rows=comparison_rows,
+                low_budget=args.low_budget,
+                high_budget=args.high_budget,
+                late_threshold=args.late_threshold,
+                output=args.output,
+                title=args.title,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output, size=2200, dpi=300)
+        payload = [
+            {
+                "polynomial": row.polynomial_slug,
+                "low_grid_late": round(row.low_grid_late, 6),
+                "high_grid_late": round(row.high_grid_late, 6),
+                "low_center_late": round(row.low_center_late, 6),
+                "high_center_late": round(row.high_center_late, 6),
+                "low_inner_band_late": round(row.low_inner_band_late, 6),
+                "high_inner_band_late": round(row.high_inner_band_late, 6),
+                "center_retained_fraction": round(row.center_retained_fraction, 6),
+                "inner_band_retained_fraction": round(row.inner_band_retained_fraction, 6),
+            }
+            for row in comparison_rows
+        ]
         print(json.dumps(payload, indent=2))
         return
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 import sys
 
@@ -9,8 +10,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.cubic import asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.cubic import asymmetric_cubic, compare_cubic_budget_persistence, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
+from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -820,8 +821,218 @@ def main() -> None:
     ]
     (REPORTS / "cubic-budget-persistence.md").write_text("\n".join(cubic_budget_lines) + "\n")
 
+    cubic_persistence_rows = compare_cubic_budget_persistence(
+        [unity, asymmetric, split_critical],
+        width=120,
+        height=120,
+        low_budget=CUBIC_BUDGET_LOW,
+        high_budget=CUBIC_BUDGET_HIGH,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        tile_cols=CUBIC_BUDGET_TILES,
+        tile_rows=CUBIC_BUDGET_TILES,
+        bands=CUBIC_BANDS,
+    )
+    cubic_persistence_svg = ART / "cubic-persistence-atlas.svg"
+    cubic_persistence_png = ART / "cubic-persistence-atlas.png"
+    low_tiles_by_slug = {
+        unity.slug: unity_low_tiles,
+        asymmetric.slug: asymmetric_low_tiles,
+        split_critical.slug: scan_cubic_late_tail_tiles(
+            split_critical,
+            width=120,
+            height=120,
+            max_iter=CUBIC_BUDGET_LOW,
+            late_threshold=CUBIC_LATE_THRESHOLD,
+            tile_cols=CUBIC_BUDGET_TILES,
+            tile_rows=CUBIC_BUDGET_TILES,
+        ),
+    }
+    high_tiles_by_slug = {
+        unity.slug: unity_high_tiles,
+        asymmetric.slug: asymmetric_high_tiles,
+        split_critical.slug: scan_cubic_late_tail_tiles(
+            split_critical,
+            width=120,
+            height=120,
+            max_iter=CUBIC_BUDGET_HIGH,
+            late_threshold=CUBIC_LATE_THRESHOLD,
+            tile_cols=CUBIC_BUDGET_TILES,
+            tile_rows=CUBIC_BUDGET_TILES,
+        ),
+    }
+    render_cubic_persistence_atlas_svg(
+        low_tiles_by_slug=low_tiles_by_slug,
+        high_tiles_by_slug=high_tiles_by_slug,
+        comparison_rows=cubic_persistence_rows,
+        low_budget=CUBIC_BUDGET_LOW,
+        high_budget=CUBIC_BUDGET_HIGH,
+        late_threshold=CUBIC_LATE_THRESHOLD,
+        output=cubic_persistence_svg,
+    )
+    export_png_from_svg(cubic_persistence_svg, cubic_persistence_png, size=2200, dpi=300)
+
+    with (ART / "cubic-persistence-atlas.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "low_budget",
+                "high_budget",
+                "low_grid_late",
+                "high_grid_late",
+                "low_center_late",
+                "high_center_late",
+                "low_unresolved_fraction",
+                "high_unresolved_fraction",
+                "low_inner_band_late",
+                "high_inner_band_late",
+                "center_retained_fraction",
+                "inner_band_retained_fraction",
+            ],
+        )
+        writer.writeheader()
+        for row in cubic_persistence_rows:
+            writer.writerow(
+                {
+                    "polynomial": row.polynomial_slug,
+                    "low_budget": row.low_budget,
+                    "high_budget": row.high_budget,
+                    "low_grid_late": row.low_grid_late,
+                    "high_grid_late": row.high_grid_late,
+                    "low_center_late": row.low_center_late,
+                    "high_center_late": row.high_center_late,
+                    "low_unresolved_fraction": row.low_unresolved_fraction,
+                    "high_unresolved_fraction": row.high_unresolved_fraction,
+                    "low_inner_band_late": row.low_inner_band_late,
+                    "high_inner_band_late": row.high_inner_band_late,
+                    "center_retained_fraction": row.center_retained_fraction,
+                    "inner_band_retained_fraction": row.inner_band_retained_fraction,
+                }
+            )
+
+    persistence_by_slug = {row.polynomial_slug: row for row in cubic_persistence_rows}
+    unity_persistence = persistence_by_slug[unity.slug]
+    asym_persistence = persistence_by_slug[asymmetric.slug]
+    split_persistence = persistence_by_slug[split_critical.slug]
+    cubic_persistence_lines = [
+        "# Three cubic persistence atlas",
+        "",
+        f"This fast pass keeps the old cubic-budget question but stops pretending there were only two asymmetric outcomes worth checking.",
+        f"The cutoff still rises from `{CUBIC_BUDGET_LOW}` to `{CUBIC_BUDGET_HIGH}` steps. The new question is where the split-critical cubic lands between the repeated-center unity cubic and the winner-take-most asymmetric cubic.",
+        "",
+        "## Main read",
+        "",
+        f"- the unity cubic still keeps the hottest surviving center: `{unity_persistence.high_center_late:.1%}` late-tail share in the center four tiles at `{CUBIC_BUDGET_HIGH}` steps",
+        f"- the old asymmetric cubic still cools the hardest: its center stays at `{asym_persistence.high_center_late:.1%}`, and its inner-band retention falls to `{asym_persistence.inner_band_retained_fraction:.1%}` of the low-budget value",
+        f"- the split-critical cubic really does land in the middle lane: its center cools from `{split_persistence.low_center_late:.1%}` to `{split_persistence.high_center_late:.1%}`, and its inner-band retention stays at `{split_persistence.inner_band_retained_fraction:.1%}`",
+        f"- that middle lane is real geometry, not leftover cutoff fog: the split-critical unresolved share still collapses from `{split_persistence.low_unresolved_fraction:.1%}` to `{split_persistence.high_unresolved_fraction:.1%}`",
+        "",
+        "## Why this changes the repo",
+        "",
+        "The earlier persistence sidecar only settled one contrast: unity cubic versus one asymmetric cubic.",
+        "That was honest, but still incomplete.",
+        "",
+        "The split-critical cubic already told us that broken symmetry can stay balanced and hot near the middle of the square.",
+        "This atlas checks whether that hotter middle survives a larger cutoff or whether it collapses like the winner-take-most cubic once the budget stops choking the orbit.",
+        "",
+        "It survives, but not all the way to the unity story.",
+        "",
+        f"At `{CUBIC_BUDGET_HIGH}` steps the unity cubic keeps `{unity_persistence.high_inner_band_late:.1%}` late-tail share in the nearest-critical band, the split-critical cubic keeps `{split_persistence.high_inner_band_late:.1%}`, and the old asymmetric cubic keeps only `{asym_persistence.high_inner_band_late:.1%}`.",
+        "",
+        "That is the bounded upgrade here: the repo no longer treats 'broken symmetry' as one persistence outcome.",
+        "",
+        "## Read the figure",
+        "",
+        f"- top row: low-budget late-tail maps at `{CUBIC_BUDGET_LOW}` steps for all three cubics",
+        f"- bottom row: the same maps at `{CUBIC_BUDGET_HIGH}` steps",
+        "- summary block: grid late share, center-four late share, unresolved fraction, and near-critical retention for each cubic",
+        "",
+        "Open `art/cubic-persistence-atlas.svg`, `art/cubic-persistence-atlas.png`, `art/cubic-persistence-atlas.csv`, and `notebooks/cubic_persistence_atlas.ipynb` next.",
+    ]
+    (REPORTS / "cubic-persistence-atlas.md").write_text("\n".join(cubic_persistence_lines) + "\n")
+
+    cubic_persistence_notebook = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "# Three cubic persistence atlas\n",
+                    "\n",
+                    "This notebook is the slower companion to `reports/cubic-persistence-atlas.md`.\n",
+                    "It reads the generated CSV and checks the middle-lane claim directly.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "import csv\n",
+                    "from pathlib import Path\n",
+                    "\n",
+                    "rows = []\n",
+                    "with (Path('..') / 'art' / 'cubic-persistence-atlas.csv').open() as handle:\n",
+                    "    for row in csv.DictReader(handle):\n",
+                    "        parsed = {key: (float(value) if key not in {'polynomial'} else value) for key, value in row.items()}\n",
+                    "        rows.append(parsed)\n",
+                    "rows\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Sort by surviving center heat\n",
+                    "\n",
+                    "The cleanest read is just to rank the three cubics by high-budget center-four late share.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "sorted([(row['polynomial'], row['high_center_late']) for row in rows], key=lambda item: item[1], reverse=True)\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Check the middle-lane claim\n",
+                    "\n",
+                    "The split-critical cubic should sit between the unity cubic and the older asymmetric cubic on both surviving center heat and inner-band retention.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "by_name = {row['polynomial']: row for row in rows}\n",
+                    "unity = by_name['unity-cubic']\n",
+                    "asym = by_name['asymmetric-cubic']\n",
+                    "split = by_name['split-critical-asymmetric-cubic']\n",
+                    "print('high center', unity['high_center_late'], split['high_center_late'], asym['high_center_late'])\n",
+                    "print('inner retention', unity['inner_band_retained_fraction'], split['inner_band_retained_fraction'], asym['inner_band_retained_fraction'])\n",
+                ],
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python", "version": "3.11"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    (REPO / "notebooks" / "cubic_persistence_atlas.ipynb").write_text(json.dumps(cubic_persistence_notebook, indent=2) + "\n")
+
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, late-tail map, asymmetric cubic contrasts, and reports")
+    print("generated gallery, scan figures, late-tail map, cubic persistence atlas, asymmetric cubic contrasts, and reports")
 
 
 if __name__ == "__main__":

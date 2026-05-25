@@ -82,6 +82,38 @@ class CubicLateTailTileRow:
         return 0.5 * (self.y_min + self.y_max)
 
 
+@dataclass(frozen=True)
+class CubicBudgetComparisonRow:
+    polynomial_slug: str
+    polynomial_name: str
+    low_budget: int
+    high_budget: int
+    low_grid_late: float
+    high_grid_late: float
+    low_center_late: float
+    high_center_late: float
+    low_unresolved_fraction: float
+    high_unresolved_fraction: float
+    low_inner_band_late: float
+    high_inner_band_late: float
+
+    @property
+    def center_retained_fraction(self) -> float:
+        if self.low_center_late <= 1e-12:
+            return 0.0
+        return self.high_center_late / self.low_center_late
+
+    @property
+    def inner_band_retained_fraction(self) -> float:
+        if self.low_inner_band_late <= 1e-12:
+            return 0.0
+        return self.high_inner_band_late / self.low_inner_band_late
+
+    @property
+    def grid_cooling(self) -> float:
+        return self.low_grid_late - self.high_grid_late
+
+
 def cubic_from_roots(
     name: str,
     slug: str,
@@ -381,4 +413,88 @@ def scan_cubic_late_tail_tiles(
                     unresolved_fraction=unresolved_counts[index] / count if count else 0.0,
                 )
             )
+    return rows
+
+
+def summarize_cubic_late_tail_tiles(rows: list[CubicLateTailTileRow]) -> tuple[float, float, float]:
+    if not rows:
+        raise ValueError("rows must not be empty")
+    total = sum(row.sample_count for row in rows)
+    if total <= 0:
+        return (0.0, 0.0, 0.0)
+    grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+    center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+    center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+    unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+    return (grid_late, center_late, unresolved)
+
+
+def compare_cubic_budget_persistence(
+    polynomials: list[CubicPolynomial],
+    *,
+    width: int = 120,
+    height: int = 120,
+    low_budget: int = 8,
+    high_budget: int = 24,
+    late_threshold: int = 10,
+    tile_cols: int = 12,
+    tile_rows: int = 12,
+    bands: int = 8,
+) -> list[CubicBudgetComparisonRow]:
+    rows: list[CubicBudgetComparisonRow] = []
+    for polynomial in polynomials:
+        low_tiles = scan_cubic_late_tail_tiles(
+            polynomial,
+            width=width,
+            height=height,
+            max_iter=low_budget,
+            late_threshold=late_threshold,
+            tile_cols=tile_cols,
+            tile_rows=tile_rows,
+        )
+        high_tiles = scan_cubic_late_tail_tiles(
+            polynomial,
+            width=width,
+            height=height,
+            max_iter=high_budget,
+            late_threshold=late_threshold,
+            tile_cols=tile_cols,
+            tile_rows=tile_rows,
+        )
+        low_grid_late, low_center_late, low_unresolved = summarize_cubic_late_tail_tiles(low_tiles)
+        high_grid_late, high_center_late, high_unresolved = summarize_cubic_late_tail_tiles(high_tiles)
+        low_inner_rows = scan_critical_distance(
+            polynomial,
+            width=width,
+            height=height,
+            max_iter=low_budget,
+            bands=bands,
+            late_threshold=late_threshold,
+            include_unresolved_in_late=True,
+        )
+        high_inner_rows = scan_critical_distance(
+            polynomial,
+            width=width,
+            height=height,
+            max_iter=high_budget,
+            bands=bands,
+            late_threshold=late_threshold,
+            include_unresolved_in_late=True,
+        )
+        rows.append(
+            CubicBudgetComparisonRow(
+                polynomial_slug=polynomial.slug,
+                polynomial_name=polynomial.name,
+                low_budget=low_budget,
+                high_budget=high_budget,
+                low_grid_late=low_grid_late,
+                high_grid_late=high_grid_late,
+                low_center_late=low_center_late,
+                high_center_late=high_center_late,
+                low_unresolved_fraction=low_unresolved,
+                high_unresolved_fraction=high_unresolved,
+                low_inner_band_late=low_inner_rows[0].late_fraction,
+                high_inner_band_late=high_inner_rows[0].late_fraction,
+            )
+        )
     return rows

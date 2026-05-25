@@ -10,7 +10,7 @@ import textwrap
 import xml.etree.ElementTree as ET
 
 from .core import IterationHistogram, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
-from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
+from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicBudgetComparisonRow, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -1084,6 +1084,132 @@ def render_cubic_budget_persistence_svg(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines) + "\n")
+
+
+def render_cubic_persistence_atlas_svg(
+    *,
+    low_tiles_by_slug: dict[str, list[CubicLateTailTileRow]],
+    high_tiles_by_slug: dict[str, list[CubicLateTailTileRow]],
+    comparison_rows: list[CubicBudgetComparisonRow],
+    low_budget: int,
+    high_budget: int,
+    late_threshold: int,
+    output: str | Path,
+    title: str | None = None,
+) -> None:
+    width = 1900
+    height = 1220
+    left = 54
+    top = 118
+    map_size = 260
+    col_gap = 32
+    row_gap = 92
+    summary_top = top + 2 * map_size + row_gap + 18
+    summary_height = 268
+
+    def _append_tile_panel(lines: list[str], rows: list[CubicLateTailTileRow], *, panel_left: float, panel_top: float, label: str) -> None:
+        x_min = min(row.x_min for row in rows)
+        x_max = max(row.x_max for row in rows)
+        y_min = min(row.y_min for row in rows)
+        y_max = max(row.y_max for row in rows)
+
+        def map_x(value: float) -> float:
+            return panel_left + (value - x_min) / (x_max - x_min) * map_size
+
+        def map_y(value: float) -> float:
+            return panel_top + (y_max - value) / (y_max - y_min) * map_size
+
+        grid_late, center_late, unresolved = _summarize_cubic_tiles(rows)
+        axis_x = map_x(0.0)
+        axis_y = map_y(0.0)
+        unit_r = map_size * (1.0 / (x_max - x_min))
+
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{map_size}" height="{map_size}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<text x="{panel_left}" y="{panel_top - 20}" fill="#e5eefc" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(label)}</text>')
+        lines.append(f'<line x1="{axis_x:.2f}" y1="{panel_top + 10:.2f}" x2="{axis_x:.2f}" y2="{panel_top + map_size - 10:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<line x1="{panel_left + 10:.2f}" y1="{axis_y:.2f}" x2="{panel_left + map_size - 10:.2f}" y2="{axis_y:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<circle cx="{axis_x:.2f}" cy="{axis_y:.2f}" r="{unit_r:.2f}" fill="none" stroke="#cbd5e1" stroke-width="1.0" stroke-dasharray="6 5" opacity="0.55"/>')
+
+        for row in rows:
+            x = map_x(row.x_min)
+            y = map_y(row.y_max)
+            w = (row.x_max - row.x_min) / (x_max - x_min) * map_size
+            h = (row.y_max - row.y_min) / (y_max - y_min) * map_size
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w + 0.4:.2f}" height="{h + 0.4:.2f}" fill="{_late_tail_hex(row.late_fraction)}"/>')
+
+        lines.append(_paragraph(panel_left, panel_top + map_size + 24, [f'grid {grid_late:.1%}', f'center {center_late:.1%} · unresolved {unresolved:.1%}'], fill='#cbd5e1', font_size=13, line_height=17))
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateLegendAtlas" x1="0" y1="0" x2="1" y2="0">',
+        f'    <stop offset="0%" stop-color="{_late_tail_hex(0.0)}"/>',
+        f'    <stop offset="100%" stop-color="{_late_tail_hex(1.0)}"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Three cubic persistence atlas")}</text>',
+        f'<text x="{left}" y="80" fill="#9ec5ff" font-size="16" font-family="Helvetica, Arial, sans-serif">Raise the Newton cutoff from {low_budget} to {high_budget} steps and ask what kind of slow geometry actually survives. Orange tiles still need at least {late_threshold} steps, or never settle by the cutoff.</text>',
+    ]
+
+    for index, row in enumerate(comparison_rows):
+        panel_left = left + index * (map_size + col_gap)
+        _append_tile_panel(lines, low_tiles_by_slug[row.polynomial_slug], panel_left=panel_left, panel_top=top, label=f'{row.polynomial_name} · {low_budget} steps')
+        _append_tile_panel(lines, high_tiles_by_slug[row.polynomial_slug], panel_left=panel_left, panel_top=top + map_size + row_gap, label=f'{row.polynomial_name} · {high_budget} steps')
+
+    summary_left = left + 3 * (map_size + col_gap) + 18
+    summary_width = width - summary_left - 48
+    lines.append(f'<rect x="{summary_left}" y="{top - 4}" width="{summary_width}" height="{summary_top + summary_height - top + 4}" rx="24" fill="#020617" stroke="#334155" stroke-width="1.4"/>')
+    lines.append(f'<text x="{summary_left + 24}" y="{top + 24}" fill="#e5eefc" font-size="23" font-family="Helvetica, Arial, sans-serif" font-weight="700">What persists, and in what order</text>')
+
+    y = top + 62
+    for row in comparison_rows:
+        lines.append(_paragraph(summary_left + 24, y, [
+            row.polynomial_name,
+            f'grid late {row.low_grid_late:.1%} → {row.high_grid_late:.1%}',
+            f'center four {row.low_center_late:.1%} → {row.high_center_late:.1%} (retain {row.center_retained_fraction:.1%})',
+            f'inner critical band {row.low_inner_band_late:.1%} → {row.high_inner_band_late:.1%} (retain {row.inner_band_retained_fraction:.1%})',
+            f'unresolved {row.low_unresolved_fraction:.1%} → {row.high_unresolved_fraction:.1%}',
+        ], fill='#cbd5e1', font_size=15, weight='700' if row.polynomial_slug == 'unity-cubic' else 'normal', line_height=22))
+        y += 120
+
+    lines.append(f'<text x="{summary_left + 24}" y="{summary_top + 24}" fill="#e5eefc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">Compact read</text>')
+    hottest_center = max(comparison_rows, key=lambda row: row.high_center_late)
+    coolest_center = min(comparison_rows, key=lambda row: row.high_center_late)
+    strongest_retention = max(comparison_rows, key=lambda row: row.inner_band_retained_fraction)
+    weakest_retention = min(comparison_rows, key=lambda row: row.inner_band_retained_fraction)
+    lines.append(_paragraph(summary_left + 24, summary_top + 56, [
+        f'The hottest surviving center is still {hottest_center.polynomial_name} at {hottest_center.high_center_late:.1%}.',
+        f'The cleanest cooled center is {coolest_center.polynomial_name} at {coolest_center.high_center_late:.1%}.',
+        f'The strongest near-critical retention is {strongest_retention.polynomial_name} at {strongest_retention.inner_band_retained_fraction:.1%} of its old tail share.',
+        f'The weakest retention is {weakest_retention.polynomial_name} at {weakest_retention.inner_band_retained_fraction:.1%}.',
+        'So the split-critical cubic really does land in a middle lane: less persistent than the unity singular core, much more persistent than the winner-take-most asymmetric cubic.',
+    ], fill='#9ec5ff', font_size=15, line_height=22))
+
+    legend_top = height - 94
+    lines.append(f'<rect x="{left}" y="{legend_top - 28}" width="{width - left - 42}" height="76" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<rect x="{left + 18}" y="{legend_top + 6}" width="220" height="18" rx="9" fill="url(#lateLegendAtlas)" stroke="#475569" stroke-width="1"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
+    lines.append(f'<text x="{left + 238}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
+    lines.append(_paragraph(left + 284, legend_top + 4, ['Orange intensity = local tail-or-cutoff share.', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin. The useful difference is not just how much heat remains, but where it remains.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def _summarize_cubic_tiles(rows: list[CubicLateTailTileRow]) -> tuple[float, float, float]:
+    total = sum(row.sample_count for row in rows)
+    grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+    center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+    center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+    unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+    return grid_late, center_late, unresolved
 
 
 def _append_cubic_basin_panel(lines: list[str], polynomial: CubicPolynomial, stats: CubicBasinStats, samples, *, left: float, top: float, size: float, max_iter: int) -> None:
