@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
+from .core import basin_summary, compare_late_tail_persistence, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
 from .cubic import asymmetric_cubic, compare_cubic_budget_persistence, cubic_basin_summary, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
-from .render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from .render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_late_tail_persistence_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 
 def main() -> None:
@@ -81,6 +81,20 @@ def main() -> None:
     late_tail_parser.add_argument("--output", type=Path, default=None)
     late_tail_parser.add_argument("--png-output", type=Path, default=None)
     late_tail_parser.add_argument("--title", type=str, default=None)
+
+    late_tail_persistence_parser = subparsers.add_parser("late-tail-persistence", help="compare the old late-tail map against a harder ultra-late persistence read")
+    late_tail_persistence_parser.add_argument("--powers", type=str, required=True, help="comma-separated powers, e.g. 3,6,9,12")
+    late_tail_persistence_parser.add_argument("--width", type=int, default=120)
+    late_tail_persistence_parser.add_argument("--height", type=int, default=120)
+    late_tail_persistence_parser.add_argument("--tile-cols", type=int, default=12)
+    late_tail_persistence_parser.add_argument("--tile-rows", type=int, default=12)
+    late_tail_persistence_parser.add_argument("--low-budget", type=int, default=40)
+    late_tail_persistence_parser.add_argument("--high-budget", type=int, default=80)
+    late_tail_persistence_parser.add_argument("--low-threshold", type=int, default=20)
+    late_tail_persistence_parser.add_argument("--high-threshold", type=int, default=40)
+    late_tail_persistence_parser.add_argument("--output", type=Path, default=None)
+    late_tail_persistence_parser.add_argument("--png-output", type=Path, default=None)
+    late_tail_persistence_parser.add_argument("--title", type=str, default=None)
 
     cubic_parser = subparsers.add_parser("cubic-compare", help="compare the unity cubic against one asymmetric cubic")
     cubic_parser.add_argument("--width", type=int, default=180)
@@ -321,6 +335,78 @@ def main() -> None:
                 },
             }
             for power, rows in profiles.items()
+        ]
+        print(json.dumps(payload, indent=2))
+        return
+
+    if args.command == "late-tail-persistence":
+        powers = [int(chunk.strip()) for chunk in args.powers.split(",") if chunk.strip()]
+        low_profiles = {
+            power: scan_late_tail_tiles(
+                power,
+                width=args.width,
+                height=args.height,
+                max_iter=args.low_budget,
+                late_threshold=args.low_threshold,
+                tile_cols=args.tile_cols,
+                tile_rows=args.tile_rows,
+            )
+            for power in powers
+        }
+        high_profiles = {
+            power: scan_late_tail_tiles(
+                power,
+                width=args.width,
+                height=args.height,
+                max_iter=args.high_budget,
+                late_threshold=args.high_threshold,
+                tile_cols=args.tile_cols,
+                tile_rows=args.tile_rows,
+            )
+            for power in powers
+        }
+        comparisons = compare_late_tail_persistence(
+            powers,
+            width=args.width,
+            height=args.height,
+            low_budget=args.low_budget,
+            high_budget=args.high_budget,
+            low_threshold=args.low_threshold,
+            high_threshold=args.high_threshold,
+            tile_cols=args.tile_cols,
+            tile_rows=args.tile_rows,
+        )
+        if args.output is not None:
+            render_late_tail_persistence_svg(
+                low_profiles,
+                high_profiles,
+                comparisons,
+                output=args.output,
+                title=args.title,
+                low_budget=args.low_budget,
+                high_budget=args.high_budget,
+                low_threshold=args.low_threshold,
+                high_threshold=args.high_threshold,
+            )
+        if args.png_output is not None and args.output is not None:
+            export_png_from_svg(args.output, args.png_output, size=2400, dpi=300)
+        payload = [
+            {
+                "power": row.power,
+                "low_budget": row.low_budget,
+                "high_budget": row.high_budget,
+                "low_threshold": row.low_threshold,
+                "high_threshold": row.high_threshold,
+                "low_grid_late": round(row.low_grid_late, 6),
+                "high_grid_late": round(row.high_grid_late, 6),
+                "low_center_late": round(row.low_center_late, 6),
+                "high_center_late": round(row.high_center_late, 6),
+                "grid_retained_fraction": round(row.grid_retained_fraction, 6),
+                "center_retained_fraction": round(row.center_retained_fraction, 6),
+                "low_unresolved_fraction": round(row.low_unresolved_fraction, 6),
+                "high_unresolved_fraction": round(row.high_unresolved_fraction, 6),
+            }
+            for row in comparisons
         ]
         print(json.dumps(payload, indent=2))
         return

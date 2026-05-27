@@ -94,6 +94,33 @@ class LateTailTileRow:
 
 
 @dataclass(frozen=True)
+class LateTailPersistenceRow:
+    power: int
+    low_budget: int
+    high_budget: int
+    low_threshold: int
+    high_threshold: int
+    low_grid_late: float
+    high_grid_late: float
+    low_center_late: float
+    high_center_late: float
+    low_unresolved_fraction: float
+    high_unresolved_fraction: float
+
+    @property
+    def grid_retained_fraction(self) -> float:
+        if self.low_grid_late <= 1e-12:
+            return 0.0
+        return self.high_grid_late / self.low_grid_late
+
+    @property
+    def center_retained_fraction(self) -> float:
+        if self.low_center_late <= 1e-12:
+            return 0.0
+        return self.high_center_late / self.low_center_late
+
+
+@dataclass(frozen=True)
 class IterationHistogram:
     power: int
     max_iter: int
@@ -477,6 +504,92 @@ def scan_late_tail_tiles(
                     unresolved_fraction=unresolved_counts[index] / count if count else 0.0,
                 )
             )
+    return rows
+
+
+def summarize_late_tail_tiles(rows: list[LateTailTileRow]) -> tuple[float, float, float]:
+    if not rows:
+        raise ValueError("rows must not be empty")
+    total = sum(row.sample_count for row in rows)
+    if total <= 0:
+        return (0.0, 0.0, 0.0)
+    grid_late = sum(row.sample_count * row.late_fraction for row in rows) / total
+    center_rows = sorted(rows, key=lambda row: abs(row.x_mid) + abs(row.y_mid))[:4]
+    center_late = sum(row.late_fraction for row in center_rows) / len(center_rows)
+    unresolved = sum(row.sample_count * row.unresolved_fraction for row in rows) / total
+    return (grid_late, center_late, unresolved)
+
+
+def compare_late_tail_persistence(
+    powers: list[int],
+    *,
+    width: int = 120,
+    height: int = 120,
+    low_budget: int = 40,
+    high_budget: int = 80,
+    low_threshold: int = 20,
+    high_threshold: int = 40,
+    tile_cols: int = 12,
+    tile_rows: int = 12,
+    x_min: float = -1.6,
+    x_max: float = 1.6,
+    y_min: float = -1.6,
+    y_max: float = 1.6,
+) -> list[LateTailPersistenceRow]:
+    if low_budget < 1 or high_budget < 1:
+        raise ValueError("budgets must both be positive")
+    if low_budget >= high_budget:
+        raise ValueError("low_budget must be smaller than high_budget")
+    if low_threshold < 0 or high_threshold < 0:
+        raise ValueError("thresholds must be non-negative")
+    if low_threshold >= high_threshold:
+        raise ValueError("low_threshold must be smaller than high_threshold")
+
+    rows: list[LateTailPersistenceRow] = []
+    for power in powers:
+        low_rows = scan_late_tail_tiles(
+            power,
+            width=width,
+            height=height,
+            max_iter=low_budget,
+            late_threshold=low_threshold,
+            tile_cols=tile_cols,
+            tile_rows=tile_rows,
+            x_min=x_min,
+            x_max=x_max,
+            y_min=y_min,
+            y_max=y_max,
+        )
+        high_rows = scan_late_tail_tiles(
+            power,
+            width=width,
+            height=height,
+            max_iter=high_budget,
+            late_threshold=high_threshold,
+            tile_cols=tile_cols,
+            tile_rows=tile_rows,
+            x_min=x_min,
+            x_max=x_max,
+            y_min=y_min,
+            y_max=y_max,
+        )
+        low_grid_late, low_center_late, low_unresolved = summarize_late_tail_tiles(low_rows)
+        high_grid_late, high_center_late, high_unresolved = summarize_late_tail_tiles(high_rows)
+        rows.append(
+            LateTailPersistenceRow(
+                power=power,
+                low_budget=low_budget,
+                high_budget=high_budget,
+                low_threshold=low_threshold,
+                high_threshold=high_threshold,
+                low_grid_late=low_grid_late,
+                high_grid_late=high_grid_late,
+                low_center_late=low_center_late,
+                high_center_late=high_center_late,
+                low_unresolved_fraction=low_unresolved,
+                high_unresolved_fraction=high_unresolved,
+            )
+        )
     return rows
 
 

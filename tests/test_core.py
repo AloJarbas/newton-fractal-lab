@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family, unity_roots
+from newton_fractal_lab.core import basin_summary, compare_late_tail_persistence, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family, summarize_late_tail_tiles, unity_roots
 
 
 class NewtonFractalTests(unittest.TestCase):
@@ -104,6 +104,40 @@ class NewtonFractalTests(unittest.TestCase):
         low_fraction = sum(row.sample_count * row.late_fraction for row in low) / sum(row.sample_count for row in low)
         high_fraction = sum(row.sample_count * row.late_fraction for row in high) / sum(row.sample_count for row in high)
         self.assertGreater(high_fraction, low_fraction)
+
+    def test_late_tail_tile_summary_matches_manual_average(self) -> None:
+        rows = scan_late_tail_tiles(6, width=48, height=48, max_iter=40, late_threshold=20, tile_cols=8, tile_rows=8)
+        grid_late, center_late, unresolved = summarize_late_tail_tiles(rows)
+        self.assertAlmostEqual(
+            grid_late,
+            sum(row.sample_count * row.late_fraction for row in rows) / sum(row.sample_count for row in rows),
+            places=9,
+        )
+        self.assertGreaterEqual(center_late, 0.0)
+        self.assertLessEqual(center_late, 1.0)
+        self.assertGreaterEqual(unresolved, 0.0)
+        self.assertLessEqual(unresolved, 1.0)
+
+    def test_higher_power_keeps_more_ultra_late_mass_after_budget_rises(self) -> None:
+        rows = compare_late_tail_persistence(
+            [3, 6, 9, 12],
+            width=72,
+            height=72,
+            low_budget=40,
+            high_budget=80,
+            low_threshold=20,
+            high_threshold=40,
+            tile_cols=8,
+            tile_rows=8,
+        )
+        by_power = {row.power: row for row in rows}
+        self.assertLess(by_power[3].high_grid_late, 0.01)
+        self.assertGreater(by_power[6].high_grid_late, by_power[3].high_grid_late)
+        self.assertGreater(by_power[9].high_grid_late, by_power[6].high_grid_late)
+        self.assertGreater(by_power[12].high_grid_late, by_power[9].high_grid_late)
+        self.assertGreater(by_power[12].grid_retained_fraction, by_power[6].grid_retained_fraction)
+        self.assertGreater(by_power[9].high_center_late, 0.9)
+        self.assertLess(by_power[6].high_center_late, 0.4)
 
 
 if __name__ == "__main__":

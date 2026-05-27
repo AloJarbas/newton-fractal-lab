@@ -9,9 +9,9 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from newton_fractal_lab.core import basin_summary, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
+from newton_fractal_lab.core import basin_summary, compare_late_tail_persistence, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
 from newton_fractal_lab.cubic import asymmetric_cubic, compare_cubic_budget_persistence, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_late_tail_persistence_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -27,6 +27,10 @@ BUDGET_HIGH = 80
 LATE_TAIL_POWERS = [3, 6, 9, 12]
 LATE_TAIL_THRESHOLD = 20
 LATE_TAIL_TILES = 12
+LATE_TAIL_PERSISTENCE_LOW_BUDGET = 40
+LATE_TAIL_PERSISTENCE_HIGH_BUDGET = 80
+LATE_TAIL_PERSISTENCE_LOW_THRESHOLD = 20
+LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD = 40
 CUBIC_GRID = 180
 CUBIC_BANDS = 8
 CUBIC_LATE_THRESHOLD = 10
@@ -420,6 +424,232 @@ def main() -> None:
     )
 
     (REPORTS / "late-tail-spatial-map.md").write_text("\n".join(late_tail_lines) + "\n")
+
+    late_tail_persistence_rows = compare_late_tail_persistence(
+        LATE_TAIL_POWERS,
+        width=120,
+        height=120,
+        low_budget=LATE_TAIL_PERSISTENCE_LOW_BUDGET,
+        high_budget=LATE_TAIL_PERSISTENCE_HIGH_BUDGET,
+        low_threshold=LATE_TAIL_PERSISTENCE_LOW_THRESHOLD,
+        high_threshold=LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD,
+        tile_cols=LATE_TAIL_TILES,
+        tile_rows=LATE_TAIL_TILES,
+    )
+    late_tail_persistence_high_rows = {
+        power: scan_late_tail_tiles(
+            power,
+            width=120,
+            height=120,
+            max_iter=LATE_TAIL_PERSISTENCE_HIGH_BUDGET,
+            late_threshold=LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD,
+            tile_cols=LATE_TAIL_TILES,
+            tile_rows=LATE_TAIL_TILES,
+        )
+        for power in LATE_TAIL_POWERS
+    }
+    late_tail_persistence_svg = ART / "late-tail-persistence-atlas.svg"
+    late_tail_persistence_png = ART / "late-tail-persistence-atlas.png"
+    render_late_tail_persistence_svg(
+        low_tiles_by_power=late_tail_rows,
+        high_tiles_by_power=late_tail_persistence_high_rows,
+        comparison_rows=late_tail_persistence_rows,
+        low_budget=LATE_TAIL_PERSISTENCE_LOW_BUDGET,
+        high_budget=LATE_TAIL_PERSISTENCE_HIGH_BUDGET,
+        low_threshold=LATE_TAIL_PERSISTENCE_LOW_THRESHOLD,
+        high_threshold=LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD,
+        output=late_tail_persistence_svg,
+    )
+    export_png_from_svg(late_tail_persistence_svg, late_tail_persistence_png, size=2400, dpi=300)
+
+    with (ART / "late-tail-persistence-atlas.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "power",
+                "budget",
+                "threshold",
+                "tile_x",
+                "tile_y",
+                "x_min",
+                "x_max",
+                "y_min",
+                "y_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "unresolved_fraction",
+            ],
+        )
+        writer.writeheader()
+        for power in LATE_TAIL_POWERS:
+            for budget, threshold, rows in (
+                (LATE_TAIL_PERSISTENCE_LOW_BUDGET, LATE_TAIL_PERSISTENCE_LOW_THRESHOLD, late_tail_rows[power]),
+                (LATE_TAIL_PERSISTENCE_HIGH_BUDGET, LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD, late_tail_persistence_high_rows[power]),
+            ):
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "power": row.power,
+                            "budget": budget,
+                            "threshold": threshold,
+                            "tile_x": row.tile_x,
+                            "tile_y": row.tile_y,
+                            "x_min": row.x_min,
+                            "x_max": row.x_max,
+                            "y_min": row.y_min,
+                            "y_max": row.y_max,
+                            "sample_count": row.sample_count,
+                            "mean_iterations": row.mean_iterations,
+                            "late_fraction": row.late_fraction,
+                            "unresolved_fraction": row.unresolved_fraction,
+                        }
+                    )
+
+    persistence_by_power = {row.power: row for row in late_tail_persistence_rows}
+    hardest_power = max(late_tail_persistence_rows, key=lambda row: row.high_grid_late)
+    coolest_power = min(late_tail_persistence_rows, key=lambda row: row.high_grid_late)
+    late_tail_persistence_lines = [
+        "# Late-tail persistence atlas",
+        "",
+        f"This follow-up keeps the old local late-tail map, but asks a harder question.",
+        f"The earlier figure marked starts that needed at least `{LATE_TAIL_PERSISTENCE_LOW_THRESHOLD}` Newton steps, or never settled within `{LATE_TAIL_PERSISTENCE_LOW_BUDGET}` steps.",
+        f"This atlas asks which tiles still look hard when the cutoff rises to `{LATE_TAIL_PERSISTENCE_HIGH_BUDGET}` and the threshold rises with it to `{LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD}` steps.",
+        "",
+        "## Main read",
+        "",
+        f"- `z^{coolest_power.power} - 1` almost fully cools at the harder read: its grid late share falls to {coolest_power.high_grid_late:.1%}, and the center four tiles drop to {coolest_power.high_center_late:.1%}",
+        f"- `z^6 - 1` keeps a smaller but real core: its center four tiles fall from {persistence_by_power[6].low_center_late:.1%} to {persistence_by_power[6].high_center_late:.1%}, so the old halo was not pure cutoff fog, just much softer than it first looked",
+        f"- `z^9 - 1` keeps the center almost completely hot even at the harder read: {persistence_by_power[9].high_center_late:.1%} of the center four tiles still need at least {LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD} steps",
+        f"- `z^{hardest_power.power} - 1` is the strongest persistence case in this packet: {hardest_power.high_grid_late:.1%} of the whole sampled square and {hardest_power.high_center_late:.1%} of the center four tiles still survive the harder cutoff",
+        "",
+        "## Why this earns a new sidecar",
+        "",
+        "The earlier late-tail map answered a real first question: where did the slow region live?",
+        "It did not answer the next one: how much of that heat was truly ultra-late structure, and how much was just moderate slowness sitting below the old 40-step ceiling?",
+        "",
+        "This pass finally separates those cases.",
+        "",
+        f"At the harder read, `z^3 - 1` is basically clean, `z^6 - 1` keeps a trimmed center, and `z^9 - 1` plus `z^12 - 1` still hold a real ultra-late core. That is the new geometric fact: higher powers are not only slower on average, they keep a center halo that survives even after the old entire iteration budget becomes the new late-threshold.",
+        "",
+        "## Per-power summary",
+        "",
+    ]
+
+    for row in late_tail_persistence_rows:
+        late_tail_persistence_lines.append(f"### z^{row.power} - 1")
+        late_tail_persistence_lines.append("")
+        late_tail_persistence_lines.append(f"- grid late share: {row.low_grid_late:.1%} at the scouting read, {row.high_grid_late:.1%} at the harder read")
+        late_tail_persistence_lines.append(f"- center four tiles: {row.low_center_late:.1%} -> {row.high_center_late:.1%}")
+        late_tail_persistence_lines.append(f"- retained grid share: {row.grid_retained_fraction:.1%}")
+        late_tail_persistence_lines.append(f"- unresolved share: {row.low_unresolved_fraction:.1%} -> {row.high_unresolved_fraction:.1%}")
+        late_tail_persistence_lines.append("")
+
+    late_tail_persistence_lines.extend(
+        [
+            "## Read the figure",
+            "",
+            f"- left panel in each card: the old local read, `≥ {LATE_TAIL_PERSISTENCE_LOW_THRESHOLD}` steps or unresolved by `{LATE_TAIL_PERSISTENCE_LOW_BUDGET}`",
+            f"- right panel in each card: the surviving ultra-late read, `≥ {LATE_TAIL_PERSISTENCE_HIGH_THRESHOLD}` steps or unresolved by `{LATE_TAIL_PERSISTENCE_HIGH_BUDGET}`",
+            "- the retention numbers tell you how much of the original late-tail mass survives once the definition becomes much stricter",
+            "",
+            "Open `art/late-tail-persistence-atlas.svg`, `art/late-tail-persistence-atlas.png`, `art/late-tail-persistence-atlas.csv`, and `notebooks/late_tail_persistence_atlas.ipynb` next.",
+        ]
+    )
+
+    (REPORTS / "late-tail-persistence-atlas.md").write_text("\n".join(late_tail_persistence_lines) + "\n")
+
+    late_tail_persistence_notebook = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "# Late-tail persistence atlas\n",
+                    "\n",
+                    "This notebook is the slower companion to `reports/late-tail-persistence-atlas.md`.\n",
+                    "It reads the tile CSV, rebuilds the per-power summaries, and checks which center halos survive the harder read.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "import csv\n",
+                    "from collections import defaultdict\n",
+                    "from pathlib import Path\n",
+                    "\n",
+                    "rows = []\n",
+                    "with (Path('..') / 'art' / 'late-tail-persistence-atlas.csv').open() as handle:\n",
+                    "    for row in csv.DictReader(handle):\n",
+                    "        parsed = {key: float(value) if key not in {'power', 'budget', 'threshold', 'tile_x', 'tile_y'} else int(value) for key, value in row.items()}\n",
+                    "        rows.append(parsed)\n",
+                    "len(rows)\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Rebuild the per-power summaries\n",
+                    "\n",
+                    "The report is comparing the old scouting read against a harder ultra-late read. This cell recreates those numbers directly from the tile table.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "grouped = defaultdict(list)\n",
+                    "for row in rows:\n",
+                    "    grouped[(row['power'], row['budget'])].append(row)\n",
+                    "\n",
+                    "def summarize(tile_rows):\n",
+                    "    total = sum(row['sample_count'] for row in tile_rows)\n",
+                    "    grid_late = sum(row['sample_count'] * row['late_fraction'] for row in tile_rows) / total\n",
+                    "    center_rows = sorted(tile_rows, key=lambda row: abs((row['x_min'] + row['x_max']) / 2.0) + abs((row['y_min'] + row['y_max']) / 2.0))[:4]\n",
+                    "    center_late = sum(row['late_fraction'] for row in center_rows) / len(center_rows)\n",
+                    "    unresolved = sum(row['sample_count'] * row['unresolved_fraction'] for row in tile_rows) / total\n",
+                    "    return grid_late, center_late, unresolved\n",
+                    "\n",
+                    "summary = {}\n",
+                    f"for power in {LATE_TAIL_POWERS}:\n",
+                    f"    summary[(power, {LATE_TAIL_PERSISTENCE_LOW_BUDGET})] = summarize(grouped[(power, {LATE_TAIL_PERSISTENCE_LOW_BUDGET})])\n",
+                    f"    summary[(power, {LATE_TAIL_PERSISTENCE_HIGH_BUDGET})] = summarize(grouped[(power, {LATE_TAIL_PERSISTENCE_HIGH_BUDGET})])\n",
+                    "summary\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Rank the powers by surviving ultra-late mass\n",
+                    "\n",
+                    "If the new sidecar is honest, the higher-power center halos should survive the harder read much better than the lower-power ones.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    f"sorted([(power, summary[(power, {LATE_TAIL_PERSISTENCE_HIGH_BUDGET})][0], summary[(power, {LATE_TAIL_PERSISTENCE_HIGH_BUDGET})][1]) for power in {LATE_TAIL_POWERS}], key=lambda item: item[1], reverse=True)\n",
+                ],
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python", "version": "3.11"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    (REPO / "notebooks" / "late_tail_persistence_atlas.ipynb").write_text(json.dumps(late_tail_persistence_notebook, indent=2) + "\n")
 
     unity = unity_cubic()
     asymmetric = asymmetric_cubic()
@@ -1032,7 +1262,7 @@ def main() -> None:
     (REPO / "notebooks" / "cubic_persistence_atlas.ipynb").write_text(json.dumps(cubic_persistence_notebook, indent=2) + "\n")
 
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, late-tail map, cubic persistence atlas, asymmetric cubic contrasts, and reports")
+    print("generated gallery, scan figures, late-tail map, late-tail persistence atlas, cubic persistence atlas, asymmetric cubic contrasts, and reports")
 
 
 if __name__ == "__main__":

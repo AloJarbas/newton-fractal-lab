@@ -9,7 +9,7 @@ import tempfile
 import textwrap
 import xml.etree.ElementTree as ET
 
-from .core import IterationHistogram, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
+from .core import IterationHistogram, LateTailPersistenceRow, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
 from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicBudgetComparisonRow, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
@@ -759,6 +759,161 @@ def render_late_tail_heatmap_svg(
     lines.append(f'<text x="{left + 18}" y="{legend_top + 48}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
     lines.append(f'<text x="{left + 238}" y="{legend_top + 48}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
     lines.append(_paragraph(left + 280, legend_top + 8, [f'Orange intensity = local late-tail share (≥ {late_threshold} steps or unresolved by {max_iter}).', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_late_tail_persistence_svg(
+    low_tiles_by_power: dict[int, list[LateTailTileRow]],
+    high_tiles_by_power: dict[int, list[LateTailTileRow]],
+    comparison_rows: list[LateTailPersistenceRow],
+    *,
+    output: str | Path,
+    title: str | None = None,
+    low_budget: int = 40,
+    high_budget: int = 80,
+    low_threshold: int = 20,
+    high_threshold: int = 40,
+) -> None:
+    if not comparison_rows:
+        raise ValueError("comparison_rows must not be empty")
+
+    ordered_powers = [row.power for row in sorted(comparison_rows, key=lambda row: row.power)]
+    first_rows = low_tiles_by_power[ordered_powers[0]]
+    x_min = min(row.x_min for row in first_rows)
+    x_max = max(row.x_max for row in first_rows)
+    y_min = min(row.y_min for row in first_rows)
+    y_max = max(row.y_max for row in first_rows)
+
+    width = 1520
+    left = 54
+    right = 42
+    top = 118
+    card_gap_x = 36
+    card_gap_y = 30
+    card_w = (width - left - right - card_gap_x) / 2.0
+    card_h = 470
+    footer_h = 148
+    rows = (len(ordered_powers) + 1) // 2
+    height = int(top + rows * card_h + max(0, rows - 1) * card_gap_y + footer_h)
+
+    comparison_by_power = {row.power: row for row in comparison_rows}
+
+    def map_x(map_left: float, map_size: float, value: float) -> float:
+        return map_left + (value - x_min) / (x_max - x_min) * map_size
+
+    def map_y(map_top: float, map_size: float, value: float) -> float:
+        return map_top + (y_max - value) / (y_max - y_min) * map_size
+
+    def append_tile_panel(lines: list[str], rows: list[LateTailTileRow], *, map_left: float, map_top: float, map_size: float, label: str) -> LateTailTileRow:
+        lines.append(f'<text x="{map_left}" y="{map_top - 12}" fill="#dbeafe" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(label)}</text>')
+        lines.append(f'<rect x="{map_left}" y="{map_top}" width="{map_size}" height="{map_size}" rx="16" fill="#0b1320" stroke="#24324a" stroke-width="1.2"/>')
+        axis_x = map_x(map_left, map_size, 0.0)
+        axis_y = map_y(map_top, map_size, 0.0)
+        unit_r = map_size * (1.0 / (x_max - x_min))
+        lines.append(f'<line x1="{axis_x:.2f}" y1="{map_top + 8:.2f}" x2="{axis_x:.2f}" y2="{map_top + map_size - 8:.2f}" stroke="#dbeafe" stroke-width="1.1" stroke-dasharray="5 5" opacity="0.58"/>')
+        lines.append(f'<line x1="{map_left + 8:.2f}" y1="{axis_y:.2f}" x2="{map_left + map_size - 8:.2f}" y2="{axis_y:.2f}" stroke="#dbeafe" stroke-width="1.1" stroke-dasharray="5 5" opacity="0.58"/>')
+        lines.append(f'<circle cx="{axis_x:.2f}" cy="{axis_y:.2f}" r="{unit_r:.2f}" fill="none" stroke="#cbd5e1" stroke-width="1.1" stroke-dasharray="6 5" opacity="0.58"/>')
+        hottest = max(rows, key=lambda row: row.late_fraction)
+        for row in rows:
+            x = map_x(map_left, map_size, row.x_min)
+            y = map_y(map_top, map_size, row.y_max)
+            w = (row.x_max - row.x_min) / (x_max - x_min) * map_size
+            h = (row.y_max - row.y_min) / (y_max - y_min) * map_size
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w + 0.4:.2f}" height="{h + 0.4:.2f}" fill="{_late_tail_hex(row.late_fraction)}"/>')
+        return hottest
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateLegend" x1="0" y1="0" x2="1" y2="0">',
+        f'    <stop offset="0%" stop-color="{_late_tail_hex(0.0)}"/>',
+        f'    <stop offset="100%" stop-color="{_late_tail_hex(1.0)}"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "Late-tail persistence atlas")}</text>',
+        f'<text x="{left}" y="80" fill="#9ec5ff" font-size="15" font-family="Helvetica, Arial, sans-serif">Each card asks the harder follow-up: after the old 40-step scouting pass, which tiles still need at least {high_threshold} Newton steps, or still miss even the {high_budget}-step cutoff?</text>',
+    ]
+
+    map_size = 232
+    map_gap = 24
+    for index, power in enumerate(ordered_powers):
+        panel_col = index % 2
+        panel_row = index // 2
+        panel_left = left + panel_col * (card_w + card_gap_x)
+        panel_top = top + panel_row * (card_h + card_gap_y)
+        comparison = comparison_by_power[power]
+        low_rows = low_tiles_by_power[power]
+        high_rows = high_tiles_by_power[power]
+        low_hottest = max(low_rows, key=lambda row: row.late_fraction)
+        high_hottest = max(high_rows, key=lambda row: row.late_fraction)
+
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{card_w}" height="{card_h}" rx="20" fill="#020617" stroke="#334155" stroke-width="1.4"/>')
+        lines.append(f'<text x="{panel_left + 22}" y="{panel_top + 34}" fill="#e5eefc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">z^{power} - 1</text>')
+
+        map_left = panel_left + 22
+        map_top = panel_top + 78
+        low_label = f'≥ {low_threshold} steps or unresolved by {low_budget}'
+        high_label = f'≥ {high_threshold} steps or unresolved by {high_budget}'
+        append_tile_panel(lines, low_rows, map_left=map_left, map_top=map_top, map_size=map_size, label=low_label)
+        append_tile_panel(lines, high_rows, map_left=map_left + map_size + map_gap, map_top=map_top, map_size=map_size, label=high_label)
+
+        summary_x = panel_left + 22
+        summary_y = map_top + map_size + 48
+        lines.append(f'<text x="{summary_x}" y="{summary_y}" fill="#e5eefc" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="700">Persistence summary</text>')
+        lines.append(
+            _paragraph(
+                summary_x,
+                summary_y + 26,
+                [
+                    f'grid late: {comparison.low_grid_late:.1%} → {comparison.high_grid_late:.1%}',
+                    f'center four tiles: {comparison.low_center_late:.1%} → {comparison.high_center_late:.1%}',
+                    f'grid retention: {comparison.grid_retained_fraction:.1%}',
+                    f'center retention: {comparison.center_retained_fraction:.1%}',
+                ],
+                fill='#cbd5e1',
+                font_size=14,
+                line_height=20,
+            )
+        )
+        lines.append(
+            _paragraph(
+                summary_x + 310,
+                summary_y + 26,
+                [
+                    f'unresolved share: {comparison.low_unresolved_fraction:.1%} → {comparison.high_unresolved_fraction:.1%}',
+                    f'low hottest tile: {low_hottest.late_fraction:.1%} at ({low_hottest.x_mid:+.2f}, {low_hottest.y_mid:+.2f})',
+                    f'high hottest tile: {high_hottest.late_fraction:.1%} at ({high_hottest.x_mid:+.2f}, {high_hottest.y_mid:+.2f})',
+                ],
+                fill='#fbd38d',
+                font_size=14,
+                line_height=20,
+            )
+        )
+
+        if comparison.high_center_late >= 0.95:
+            callout = 'The hard center survives almost intact even after the budget doubles.'
+        elif comparison.high_center_late <= 0.05:
+            callout = 'The old late tail was mostly scouting-budget fog; the center cools away at the harder cutoff.'
+        else:
+            callout = 'Part of the old halo cools away, but a real slower core still survives.'
+        lines.append(_paragraph(summary_x, summary_y + 126, [callout], fill='#93c5fd', font_size=13, line_height=18))
+
+    legend_top = height - 112
+    lines.append(f'<rect x="{left}" y="{legend_top - 26}" width="{width - left - right}" height="72" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top - 2}" fill="#e5eefc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">Legend</text>')
+    lines.append(f'<rect x="{left + 18}" y="{legend_top + 12}" width="220" height="18" rx="9" fill="url(#lateLegend)" stroke="#475569" stroke-width="1"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top + 48}" fill="#cbd5e1" font-size="13" font-family="Helvetica, Arial, sans-serif">0%</text>')
+    lines.append(f'<text x="{left + 238}" y="{legend_top + 48}" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
+    lines.append(_paragraph(left + 280, legend_top + 8, [f'Orange intensity = local late-tail share. Left maps keep the old scouting read (≥ {low_threshold} steps or unresolved by {low_budget}); right maps ask what still survives at the harder read (≥ {high_threshold} steps or unresolved by {high_budget}).', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin.'], fill='#dbeafe', font_size=14, line_height=18))
     lines.append('</svg>')
 
     output = Path(output)

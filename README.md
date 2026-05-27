@@ -19,11 +19,13 @@ It now has two bounded asymmetric lanes too: one winner-take-most cubic and one 
 - a generated slow-convergence histogram figure that shows how much of the sampled square settles early, late, or not at all under one fixed iteration budget
 - a generated budget-comparison figure that shows which radial bands were only cutoff-limited and which ones stay stubborn after the iteration budget doubles
 - a generated late-tail spatial map that shows where the slow starts actually live on the square instead of collapsing them onto one histogram or one radial axis
+- a generated late-tail persistence atlas that raises both the Newton cutoff and the late-threshold, so the repo can finally distinguish ordinary slow tiles from the center halos that survive even after the old entire budget becomes the new ultra-late bar
 - a generated asymmetric-cubic comparison card that separates the unity-family center singularity story from the first effects of broken symmetry
 - a generated asymmetric-cubic geometry-contrast card that shows broken symmetry does not force one Newton story: one cubic becomes winner-take-most, while a second split-critical cubic keeps a much more balanced three-way fight and a hotter near-critical lane
 - a generated cubic-budget persistence card that checks how much of the old cubic drama survives after the Newton cutoff rises instead of stopping at one low-budget snapshot
 - a generated three-cubic persistence atlas that puts the unity cubic, the winner-take-most asymmetric cubic, and the split-critical asymmetric cubic on the same low/high budget map so the middle lane stops being a vague claim
 - companion notebooks on critical structure, the long iteration tail, the late-tail spatial map, the asymmetric cubic critical-set pass, the asymmetric cubic geometry contrast, the cubic-budget persistence follow-up, and the three-cubic persistence atlas
+- companion notebooks on critical structure, the long iteration tail, the late-tail spatial map, the late-tail persistence atlas, the asymmetric cubic critical-set pass, the asymmetric cubic geometry contrast, the cubic-budget persistence follow-up, and the three-cubic persistence atlas
 - small tests that check roots, convergence, grid accounting, and the new cubic lane
 
 ## Gallery
@@ -61,6 +63,12 @@ It now has two bounded asymmetric lanes too: one winner-take-most cubic and one 
 ![Late-tail spatial map](art/late-tail-spatial-map.png)
 
 This pass closes a real gap in the earlier notes. The histogram told you how much late-tail mass existed. The radius scan told you the center got hotter as the power rose. The new map shows the missing geometric fact: for low powers the slow starts still sit mostly on thin basin filaments, while higher powers turn the origin neighborhood into a visibly thick finite-budget trap.
+
+### Late-tail persistence atlas
+
+![Late-tail persistence atlas](art/late-tail-persistence-atlas.png)
+
+This follow-up asks the harder version of the same question. Once the cutoff rises from 40 to 80 steps, and the late-threshold rises with it from 20 to 40, which tiles are still genuinely ultra-late? The answer is not uniform across the family: `z^3 - 1` mostly cools away, `z^6 - 1` keeps only a trimmed core, and `z^9 - 1` plus `z^12 - 1` still hold a real center halo even after the old whole budget becomes the new late bar.
 
 ### Breaking the cubic symmetry
 
@@ -105,6 +113,8 @@ The new asymmetric-cubic sidecar matters because it keeps the repo honest. A lot
 The new asymmetric-cubic geometry-contrast sidecar matters because it closes the next loophole too. Broken symmetry is not one story. One cubic turns into winner-take-most basin ownership. Another keeps the competition near the center alive instead of cooling it away.
 
 The late-tail spatial map matters for the same reason. It upgrades the old "higher powers are slower" line into something more geometric: the slow region does not just grow, it changes shape.
+
+The new late-tail persistence atlas matters because it closes the next loophole in that story. A hot tile at the old 20-step threshold might still be ordinary moderate slowness. The harder atlas asks what survives after the threshold doubles too, and that turns out to separate the lower-power filaments from the higher-power center core much more sharply.
 
 The new cubic-budget persistence sidecar matters because it keeps the cubic comparison honest too. A hot map at one cutoff can still be partly budget-limited. The follow-up checks what is still hot after the cutoff rises.
 
@@ -166,6 +176,12 @@ Render the late-tail spatial map:
 python3 -m newton_fractal_lab.cli late-tail-map --powers 3,6,9,12 --late-threshold 20 --output art/late-tail-spatial-map.svg --png-output art/late-tail-spatial-map.png
 ```
 
+Render the late-tail persistence atlas:
+
+```bash
+python3 -m newton_fractal_lab.cli late-tail-persistence --powers 3,6,9,12 --low-budget 40 --high-budget 80 --low-threshold 20 --high-threshold 40 --output art/late-tail-persistence-atlas.svg --png-output art/late-tail-persistence-atlas.png
+```
+
 Compare the unity cubic against the new asymmetric cubic lane:
 
 ```bash
@@ -194,8 +210,8 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries for the unity family
 - `newton_fractal_lab/cubic.py`: bounded cubic lanes with explicit roots, critical points, and nearest-critical-point scans
-- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures, the budget-comparison card, the cubic-comparison card, the asymmetric-contrast card, the cubic-budget persistence card, and the three-cubic persistence atlas
-- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the late-tail spatial map, the budget-comparison pass, `cubic-compare`, `asymmetric-cubic-contrast`, `cubic-budget-persistence`, and `cubic-persistence-atlas`
+- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures, the budget-comparison card, the late-tail persistence atlas, the cubic-comparison card, the asymmetric-contrast card, the cubic-budget persistence card, and the three-cubic persistence atlas
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the late-tail spatial map, the new late-tail persistence atlas, the budget-comparison pass, `cubic-compare`, `asymmetric-cubic-contrast`, `cubic-budget-persistence`, and `cubic-persistence-atlas`
 - `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
@@ -203,6 +219,7 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 - `reports/slow-convergence.md`: generated note on how the long iteration tail thickens across the family
 - `reports/iteration-budget-comparison.md`: generated note on what disappears with a larger cutoff and what still looks geometrically stubborn
 - `reports/late-tail-spatial-map.md`: generated note on where slow starts stay filament-thin and where they condense into a center halo
+- `reports/late-tail-persistence-atlas.md`: generated note on what survives once the old 40-step budget becomes the new ultra-late bar
 - `reports/asymmetric-cubic.md`: generated note on what changes first when the cubic symmetry is broken
 - `reports/asymmetric-cubic-geometry-contrast.md`: generated note on why two different asymmetric cubics can keep very different critical geometry alive
 - `reports/cubic-budget-persistence.md`: generated note on what survives after the cubic cutoff rises
@@ -210,6 +227,7 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 - `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
 - `notebooks/slow_convergence_histograms.ipynb`: companion notebook on exact convergence-step counts, cumulative fractions, and cutoff caveats
 - `notebooks/late_tail_spatial_map.ipynb`: companion notebook on tiled late-tail occupancy and center-versus-filament comparisons
+- `notebooks/late_tail_persistence_atlas.ipynb`: companion notebook on which late-tail tiles survive the harder ultra-late read
 - `notebooks/asymmetric_cubic_critical_set.ipynb`: companion notebook for the new asymmetric-cubic critical-set pass
 - `notebooks/asymmetric_cubic_geometry_contrast.ipynb`: companion notebook for the second asymmetric-cubic contrast pass
 - `notebooks/cubic_budget_persistence.ipynb`: companion notebook for the new high-cutoff cubic follow-up
@@ -218,9 +236,9 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 
 ## Next good questions
 
-- compare the late-tail map at one higher iteration budget only if that reveals a real persistence effect instead of just cooling the same tiles
-- push the cubic budget higher again only if the persistence atlas still changes shape instead of only cooling the same tiles
 - try one third cubic only if it reveals a genuinely new critical-set geometry instead of repeating either the winner-take-most or split-critical stories
+- push the cubic budget higher again only if the persistence atlas still changes shape instead of only cooling the same tiles
+- compare one second ultra-late threshold only if it changes the new persistence ranking instead of just dimming every panel together
 
 That is enough to make this a real lab instead of just a pretty image dump.
 
