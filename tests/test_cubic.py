@@ -5,6 +5,7 @@ import unittest
 from newton_fractal_lab.cubic import (
     asymmetric_cubic,
     compare_cubic_budget_persistence,
+    counterweight_asymmetric_cubic,
     cubic_basin_summary,
     cubic_critical_points,
     evaluate_cubic,
@@ -13,6 +14,7 @@ from newton_fractal_lab.cubic import (
     scan_critical_distance,
     scan_cubic_late_tail_tiles,
     split_critical_asymmetric_cubic,
+    summarize_cubic_opposition,
     unity_cubic,
 )
 
@@ -81,6 +83,42 @@ class CubicComparisonTests(unittest.TestCase):
         asym_rows = scan_critical_distance(asymmetric_cubic(), width=72, height=72, max_iter=30, bands=6, late_threshold=10, include_unresolved_in_late=True)
         self.assertGreater(split_rows[0].late_fraction, asym_rows[0].late_fraction + 0.12)
         self.assertLess(split_rows[-1].dominant_share, 0.65)
+
+    def test_counterweight_cubic_roots_are_actual_roots(self) -> None:
+        polynomial = counterweight_asymmetric_cubic()
+        for root in polynomial.roots:
+            self.assertLess(abs(evaluate_cubic(polynomial, root)), 1e-9)
+
+    def test_counterweight_cubic_flips_late_tail_opposite_root_cluster(self) -> None:
+        row = summarize_cubic_opposition(
+            [counterweight_asymmetric_cubic()],
+            width=72,
+            height=72,
+            max_iter=24,
+            late_threshold=10,
+            tile_cols=8,
+            tile_rows=8,
+        )[0]
+        self.assertGreater(row.root_centroid_x, 0.5)
+        self.assertGreater(row.critical_centroid_x, 0.4)
+        self.assertLess(row.late_tail_centroid_x, -0.05)
+        self.assertGreater(row.left_late_share, 0.55)
+        self.assertLess(row.center_late_share, 0.05)
+
+    def test_counterweight_cubic_is_most_left_leaning_of_the_asymmetric_lane(self) -> None:
+        rows = summarize_cubic_opposition(
+            [asymmetric_cubic(), split_critical_asymmetric_cubic(), counterweight_asymmetric_cubic()],
+            width=72,
+            height=72,
+            max_iter=24,
+            late_threshold=10,
+            tile_cols=8,
+            tile_rows=8,
+        )
+        by_slug = {row.polynomial_slug: row for row in rows}
+        self.assertLess(by_slug["counterweight-asymmetric-cubic"].late_tail_centroid_x, by_slug["split-critical-asymmetric-cubic"].late_tail_centroid_x)
+        self.assertLess(by_slug["counterweight-asymmetric-cubic"].late_tail_centroid_x, by_slug["asymmetric-cubic"].late_tail_centroid_x)
+        self.assertGreater(by_slug["split-critical-asymmetric-cubic"].center_late_share, by_slug["counterweight-asymmetric-cubic"].center_late_share)
 
     def test_cubic_budget_comparison_puts_split_critical_in_the_middle(self) -> None:
         rows = compare_cubic_budget_persistence(

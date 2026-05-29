@@ -5,14 +5,14 @@ A tiny pure-Python lab for one sharp idea: Newton's method does not just find ro
 This repo starts with the cleanest family to study: `z^n - 1`.
 That keeps the algebra simple enough that the geometry gets to be the star.
 
-It now has two bounded asymmetric lanes too: one winner-take-most cubic and one split-critical cubic, both chosen to break the rotational symmetry without turning the repo into a generic polynomial zoo.
+It now has three bounded asymmetric lanes too: one winner-take-most cubic, one split-critical cubic, and now one counterweight cubic that pushes most of the late tail away from its own root cluster instead of toward it.
 
 ## What is here
 
 - pure-Python core for Newton iteration on `z^n - 1`
-- bounded cubic-analysis lanes for two carefully chosen asymmetric polynomials with explicit roots, critical points, and grid summaries
+- bounded cubic-analysis lanes for three carefully chosen asymmetric polynomials with explicit roots, critical points, and grid summaries
 - SVG renderer for basin maps with iteration shading
-- CLI for single-point reports, grid summaries, family scans, the asymmetric-cubic card, the asymmetric-contrast card, the cubic-budget persistence pass, and the three-cubic persistence atlas
+- CLI for single-point reports, grid summaries, family scans, the asymmetric-cubic card, the asymmetric-contrast card, the cubic-budget persistence pass, the three-cubic persistence atlas, and the new asymmetric-cubic opposition card
 - generated gallery for `z^3 - 1`, `z^4 - 1`, and `z^5 - 1`
 - a generated power-scan figure that tracks how convergence and basin-share spread drift as `n` increases
 - a generated critical-radius scan that makes the derivative singularity at `z = 0` visible as a real convergence problem instead of a throwaway caveat
@@ -24,8 +24,8 @@ It now has two bounded asymmetric lanes too: one winner-take-most cubic and one 
 - a generated asymmetric-cubic geometry-contrast card that shows broken symmetry does not force one Newton story: one cubic becomes winner-take-most, while a second split-critical cubic keeps a much more balanced three-way fight and a hotter near-critical lane
 - a generated cubic-budget persistence card that checks how much of the old cubic drama survives after the Newton cutoff rises instead of stopping at one low-budget snapshot
 - a generated three-cubic persistence atlas that puts the unity cubic, the winner-take-most asymmetric cubic, and the split-critical asymmetric cubic on the same low/high budget map so the middle lane stops being a vague claim
-- companion notebooks on critical structure, the long iteration tail, the late-tail spatial map, the asymmetric cubic critical-set pass, the asymmetric cubic geometry contrast, the cubic-budget persistence follow-up, and the three-cubic persistence atlas
-- companion notebooks on critical structure, the long iteration tail, the late-tail spatial map, the late-tail persistence atlas, the asymmetric cubic critical-set pass, the asymmetric cubic geometry contrast, the cubic-budget persistence follow-up, and the three-cubic persistence atlas
+- a generated asymmetric-cubic opposition card that closes the next loophole by showing a third asymmetric geometry: the roots and critical set can stay on the right while most of the late tail drifts left of the origin
+- companion notebooks on critical structure, the long iteration tail, the late-tail spatial map, the late-tail persistence atlas, the asymmetric cubic critical-set pass, the asymmetric cubic geometry contrast, the cubic-budget persistence follow-up, the three-cubic persistence atlas, and the asymmetric cubic opposition pass
 - small tests that check roots, convergence, grid accounting, and the new cubic lane
 
 ## Gallery
@@ -94,6 +94,12 @@ This follow-up keeps the same two cubics and raises the Newton cutoff. That expo
 
 This fast-lane follow-up closes the next loophole. The split-critical cubic does not collapse into the same persistence story as the older asymmetric cubic. After the cutoff rises, it keeps a real middle lane: cooler than the unity singular core, much hotter than the winner-take-most asymmetric case.
 
+### Asymmetric cubic opposition
+
+![Asymmetric cubic opposition](art/asymmetric-cubic-opposition.png)
+
+This deeper follow-up adds the third asymmetric lane the repo was still missing. The new counterweight cubic keeps its roots and critical points on the right, but the late-tail centroid flips left of the origin, so the slow geometry no longer follows the root cluster itself.
+
 ## Why this repo is worth opening
 
 Newton fractals are an honest example of how a local algorithm creates global structure.
@@ -119,6 +125,8 @@ The new late-tail persistence atlas matters because it closes the next loophole 
 The new cubic-budget persistence sidecar matters because it keeps the cubic comparison honest too. A hot map at one cutoff can still be partly budget-limited. The follow-up checks what is still hot after the cutoff rises.
 
 The new three-cubic persistence atlas matters because it closes the next loophole after that. Broken symmetry does not imply one persistence outcome. The split-critical cubic keeps a real middle lane once the cutoff rises, so the repo now has three distinct persistence stories instead of two endpoints and a guess.
+
+The new asymmetric-cubic opposition card matters because it closes the next one too. Even after the repo had a winner-take-most cubic and a balanced split-critical cubic, it still would have been easy to assume the slow tail had to lean toward the same side as the roots and critical set. The counterweight cubic breaks that intuition: the roots and critical points stay on the right, while most of the late-tail mass drifts left.
 
 ## Quick start
 
@@ -206,12 +214,18 @@ Render the three-cubic persistence atlas:
 python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-persistence-atlas.svg --png-output art/cubic-persistence-atlas.png
 ```
 
+Render the new asymmetric-cubic opposition card:
+
+```bash
+python3 -m newton_fractal_lab.cli asymmetric-cubic-opposition --output art/asymmetric-cubic-opposition.svg --png-output art/asymmetric-cubic-opposition.png
+```
+
 ## Repo layout
 
 - `newton_fractal_lab/core.py`: iteration and basin summaries for the unity family
 - `newton_fractal_lab/cubic.py`: bounded cubic lanes with explicit roots, critical points, and nearest-critical-point scans
-- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures, the budget-comparison card, the late-tail persistence atlas, the cubic-comparison card, the asymmetric-contrast card, the cubic-budget persistence card, and the three-cubic persistence atlas
-- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the late-tail spatial map, the new late-tail persistence atlas, the budget-comparison pass, `cubic-compare`, `asymmetric-cubic-contrast`, `cubic-budget-persistence`, and `cubic-persistence-atlas`
+- `newton_fractal_lab/render.py`: SVG renderer with run-length compression across each row plus the family-level scan figures, the budget-comparison card, the late-tail persistence atlas, the cubic-comparison card, the asymmetric-contrast card, the cubic-budget persistence card, the three-cubic persistence atlas, and the asymmetric-cubic opposition card
+- `newton_fractal_lab/cli.py`: render and reporting commands, including the multi-power scan, the radial critical-structure scan, the late-tail spatial map, the new late-tail persistence atlas, the budget-comparison pass, `cubic-compare`, `asymmetric-cubic-contrast`, `cubic-budget-persistence`, `cubic-persistence-atlas`, and `asymmetric-cubic-opposition`
 - `scripts/generate_gallery.py`: reproducible gallery and scan build
 - `reports/unity-family.md`: generated basin summary for the shipped gallery
 - `reports/unity-power-scan.md`: generated summary of how the family drifts across powers
@@ -224,6 +238,7 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 - `reports/asymmetric-cubic-geometry-contrast.md`: generated note on why two different asymmetric cubics can keep very different critical geometry alive
 - `reports/cubic-budget-persistence.md`: generated note on what survives after the cubic cutoff rises
 - `reports/cubic-persistence-atlas.md`: generated note on how the three cubic persistence stories separate after the cutoff rises
+- `reports/asymmetric-cubic-opposition.md`: generated note on when the slow tail stops following the root cluster
 - `notebooks/critical_structure_unity_family.ipynb`: slower companion notebook on derivative singularities, radius bands, and caveats
 - `notebooks/slow_convergence_histograms.ipynb`: companion notebook on exact convergence-step counts, cumulative fractions, and cutoff caveats
 - `notebooks/late_tail_spatial_map.ipynb`: companion notebook on tiled late-tail occupancy and center-versus-filament comparisons
@@ -232,13 +247,14 @@ python3 -m newton_fractal_lab.cli cubic-persistence-atlas --output art/cubic-per
 - `notebooks/asymmetric_cubic_geometry_contrast.ipynb`: companion notebook for the second asymmetric-cubic contrast pass
 - `notebooks/cubic_budget_persistence.ipynb`: companion notebook for the new high-cutoff cubic follow-up
 - `notebooks/cubic_persistence_atlas.ipynb`: companion notebook for the new three-cubic persistence atlas
+- `notebooks/asymmetric_cubic_opposition.ipynb`: companion notebook for the new counterweight cubic follow-up
 - `tests/test_core.py` and `tests/test_cubic.py`: small verification layer
 
 ## Next good questions
 
-- try one third cubic only if it reveals a genuinely new critical-set geometry instead of repeating either the winner-take-most or split-critical stories
+- try one fourth cubic only if it reveals a genuinely new slow-tail geometry instead of restating the winner-take-most, split-critical, or counterweight stories
 - push the cubic budget higher again only if the persistence atlas still changes shape instead of only cooling the same tiles
-- compare one second ultra-late threshold only if it changes the new persistence ranking instead of just dimming every panel together
+- compare one second late-tail spatial statistic only if it changes the new centroid-versus-half-share read instead of just renaming the same opposition story
 
 That is enough to make this a real lab instead of just a pretty image dump.
 

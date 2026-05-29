@@ -10,7 +10,7 @@ import textwrap
 import xml.etree.ElementTree as ET
 
 from .core import IterationHistogram, LateTailPersistenceRow, LateTailTileRow, PowerScanRow, RadiusBandRow, RadiusBudgetComparisonRow, basin_summary, sample_grid, unity_roots
-from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicBudgetComparisonRow, CubicLateTailTileRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
+from .cubic import CriticalDistanceBandRow, CubicBasinStats, CubicBudgetComparisonRow, CubicLateTailTileRow, CubicOppositionRow, CubicPolynomial, cubic_critical_points, sample_cubic_grid
 
 
 def _paragraph(x: float, y: float, lines: list[str], *, fill: str, font_size: int, weight: str = "normal", line_height: int = 20) -> str:
@@ -1351,6 +1351,264 @@ def render_cubic_persistence_atlas_svg(
     lines.append(f'<text x="{left + 18}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
     lines.append(f'<text x="{left + 238}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
     lines.append(_paragraph(left + 284, legend_top + 4, ['Orange intensity = local tail-or-cutoff share.', 'Dashed circle marks the unit circle; dashed crosshairs mark the origin. The useful difference is not just how much heat remains, but where it remains.'], fill='#dbeafe', font_size=13, line_height=18))
+    lines.append('</svg>')
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n")
+
+
+def render_asymmetric_cubic_opposition_svg(
+    *,
+    polynomials: list[CubicPolynomial],
+    stats_by_slug: dict[str, CubicBasinStats],
+    samples_by_slug: dict[str, list],
+    tiles_by_slug: dict[str, list[CubicLateTailTileRow]],
+    opposition_rows: list[CubicOppositionRow],
+    output: str | Path,
+    title: str | None = None,
+    max_iter: int = 24,
+    late_threshold: int = 10,
+) -> None:
+    width = 1900
+    height = 1280
+    left = 54
+    top = 118
+    map_size = 250
+    col_gap = 30
+    heat_top = top + 404
+    summary_left = left + 3 * (map_size + col_gap) + 24
+    summary_width = width - summary_left - 46
+
+    polynomials_by_slug = {polynomial.slug: polynomial for polynomial in polynomials}
+    display_names = {
+        'asymmetric-cubic': 'winner-take-most',
+        'split-critical-asymmetric-cubic': 'split-critical',
+        'counterweight-asymmetric-cubic': 'counterweight',
+    }
+
+    def _append_compact_basin_panel(
+        lines: list[str],
+        polynomial: CubicPolynomial,
+        stats: CubicBasinStats,
+        samples,
+        *,
+        panel_left: float,
+        panel_top: float,
+        label: str,
+    ) -> None:
+        frame_top = panel_top
+        cell_w = map_size / stats.width
+        cell_h = map_size / stats.height
+        lines.append(f'<text x="{panel_left}" y="{panel_top - 20}" fill="#e5eefc" font-size="20" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(label)}</text>')
+        lines.append(f'<rect x="{panel_left}" y="{frame_top}" width="{map_size}" height="{map_size}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+
+        for row in range(stats.height):
+            start = row * stats.width
+            row_samples = samples[start : start + stats.width]
+            run_start = 0
+            current_fill = _fill_for_cubic(row_samples[0], max_iter)
+            for col in range(1, stats.width + 1):
+                next_fill = _fill_for_cubic(row_samples[col], max_iter) if col < stats.width else None
+                if next_fill != current_fill:
+                    x = panel_left + run_start * cell_w
+                    y = frame_top + row * cell_h
+                    run_width = (col - run_start) * cell_w
+                    lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{run_width:.2f}" height="{cell_h + 0.08:.2f}" fill="{current_fill}"/>')
+                    run_start = col
+                    current_fill = next_fill
+
+        for index, root in enumerate(polynomial.roots):
+            color = _cubic_palette(index)
+            x = panel_left + (root.real - polynomial.x_min) / (polynomial.x_max - polynomial.x_min) * map_size
+            y = frame_top + (polynomial.y_max - root.imag) / (polynomial.y_max - polynomial.y_min) * map_size
+            x = min(max(x, panel_left + 14), panel_left + map_size - 14)
+            y = min(max(y, frame_top + 14), frame_top + map_size - 14)
+            lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="10" fill="#f8fafc" stroke="{color}" stroke-width="3.2"/>')
+
+        for point in cubic_critical_points(polynomial):
+            x = panel_left + (point.real - polynomial.x_min) / (polynomial.x_max - polynomial.x_min) * map_size
+            y = frame_top + (polynomial.y_max - point.imag) / (polynomial.y_max - polynomial.y_min) * map_size
+            x = min(max(x, panel_left + 16), panel_left + map_size - 16)
+            y = min(max(y, frame_top + 16), frame_top + map_size - 16)
+            lines.append(f'<line x1="{x - 9:.2f}" y1="{y - 9:.2f}" x2="{x + 9:.2f}" y2="{y + 9:.2f}" stroke="#f8fafc" stroke-width="3.2"/>')
+            lines.append(f'<line x1="{x + 9:.2f}" y1="{y - 9:.2f}" x2="{x - 9:.2f}" y2="{y + 9:.2f}" stroke="#f8fafc" stroke-width="3.2"/>')
+
+        shares = ' / '.join(f'{100.0 * share:.0f}%' for share in stats.basin_shares)
+        lines.append(_paragraph(panel_left, frame_top + map_size + 26, [f'shares {shares} · mean {stats.mean_iterations:.2f}'], fill='#f8fafc', font_size=15, line_height=19))
+
+    def _append_heat_panel(
+        lines: list[str],
+        rows: list[CubicLateTailTileRow],
+        summary: CubicOppositionRow,
+        *,
+        panel_left: float,
+        panel_top: float,
+        label: str,
+    ) -> None:
+        x_min = min(row.x_min for row in rows)
+        x_max = max(row.x_max for row in rows)
+        y_min = min(row.y_min for row in rows)
+        y_max = max(row.y_max for row in rows)
+
+        def map_x(value: float) -> float:
+            return panel_left + (value - x_min) / (x_max - x_min) * map_size
+
+        def map_y(value: float) -> float:
+            return panel_top + (y_max - value) / (y_max - y_min) * map_size
+
+        axis_x = map_x(0.0)
+        axis_y = map_y(0.0)
+        lines.append(f'<text x="{panel_left}" y="{panel_top - 20}" fill="#f8fafc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(label)}</text>')
+        lines.append(f'<rect x="{panel_left}" y="{panel_top}" width="{map_size}" height="{map_size}" rx="18" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+        lines.append(f'<line x1="{axis_x:.2f}" y1="{panel_top + 10:.2f}" x2="{axis_x:.2f}" y2="{panel_top + map_size - 10:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+        lines.append(f'<line x1="{panel_left + 10:.2f}" y1="{axis_y:.2f}" x2="{panel_left + map_size - 10:.2f}" y2="{axis_y:.2f}" stroke="#dbeafe" stroke-width="1.0" stroke-dasharray="5 5" opacity="0.55"/>')
+
+        for row in rows:
+            x = map_x(row.x_min)
+            y = map_y(row.y_max)
+            w = (row.x_max - row.x_min) / (x_max - x_min) * map_size
+            h = (row.y_max - row.y_min) / (y_max - y_min) * map_size
+            lines.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w + 0.4:.2f}" height="{h + 0.4:.2f}" fill="{_late_tail_hex(row.late_fraction)}"/>')
+
+        centroid_x = map_x(summary.late_tail_centroid_x)
+        centroid_y = map_y(summary.late_tail_centroid_y)
+        lines.append(f'<circle cx="{centroid_x:.2f}" cy="{centroid_y:.2f}" r="10" fill="#f8fafc" stroke="#f472b6" stroke-width="3.2"/>')
+        lines.append(_paragraph(panel_left, panel_top + map_size + 26, [f'left {summary.left_late_share:.1%} · center {summary.center_late_share:.1%}', f'x̄ {summary.late_tail_centroid_x:+.2f} · ȳ {summary.late_tail_centroid_y:+.2f}'], fill='#f8fafc', font_size=15, line_height=19))
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+        '    <stop offset="0%" stop-color="#07111c"/>',
+        '    <stop offset="100%" stop-color="#111827"/>',
+        '  </linearGradient>',
+        '  <linearGradient id="lateLegendOpposition" x1="0" y1="0" x2="1" y2="0">',
+        f'    <stop offset="0%" stop-color="{_late_tail_hex(0.0)}"/>',
+        f'    <stop offset="100%" stop-color="{_late_tail_hex(1.0)}"/>',
+        '  </linearGradient>',
+        '</defs>',
+        '<rect width="100%" height="100%" fill="url(#bg)"/>',
+        f'<text x="{left}" y="52" fill="#e5eefc" font-size="30" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(title or "A third asymmetric cubic can push the slow tail the other way")}</text>',
+        f'<text x="{left}" y="82" fill="#b9dcff" font-size="18" font-family="Helvetica, Arial, sans-serif">The first two asymmetric cubics bent Newton geometry without inverting it. This third lane keeps the roots and critical set on the right, but most of the late-tail mass drifts left of the origin.</text>',
+        f'<text x="{left}" y="{top - 44}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">Basin maps</text>',
+        f'<text x="{left}" y="{heat_top - 44}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">Late-tail heatmaps at ≥ {late_threshold} steps</text>',
+        f'<text x="{left + 210}" y="{top - 44}" fill="#dbeafe" font-size="14" font-family="Helvetica, Arial, sans-serif">○ roots · × critical points · ● late-tail centroid</text>',
+    ]
+
+    for index, summary in enumerate(opposition_rows):
+        panel_left = left + index * (map_size + col_gap)
+        slug = summary.polynomial_slug
+        _append_compact_basin_panel(
+            lines,
+            polynomials_by_slug[slug],
+            stats_by_slug[slug],
+            samples_by_slug[slug],
+            panel_left=panel_left,
+            panel_top=top,
+            label=display_names.get(slug, polynomials_by_slug[slug].name),
+        )
+        _append_heat_panel(
+            lines,
+            tiles_by_slug[slug],
+            summary,
+            panel_left=panel_left,
+            panel_top=heat_top,
+            label=display_names.get(slug, polynomials_by_slug[slug].name),
+        )
+
+    panel_top = top - 4
+    panel_height = 1036
+    lines.append(f'<rect x="{summary_left}" y="{panel_top}" width="{summary_width}" height="{panel_height}" rx="24" fill="#020617" stroke="#334155" stroke-width="1.4"/>')
+    lines.append(f'<text x="{summary_left + 24}" y="{top + 24}" fill="#f8fafc" font-size="24" font-family="Helvetica, Arial, sans-serif" font-weight="700">Centroid opposition summary</text>')
+
+    marker_left = summary_left + 24
+    marker_top = top + 58
+    marker_width = summary_width - 48
+    marker_height = 330
+    min_x = min(min(row.root_centroid_x, row.critical_centroid_x, row.late_tail_centroid_x) for row in opposition_rows)
+    max_x = max(max(row.root_centroid_x, row.critical_centroid_x, row.late_tail_centroid_x) for row in opposition_rows)
+    x_pad = max(0.18, 0.12 * (max_x - min_x))
+    x_min = min(-0.6, min_x - x_pad)
+    x_max = max(0.8, max_x + x_pad)
+
+    def marker_x(value: float) -> float:
+        return marker_left + (value - x_min) / (x_max - x_min) * marker_width
+
+    lines.append(f'<rect x="{marker_left}" y="{marker_top}" width="{marker_width}" height="{marker_height}" rx="18" fill="#07111c" stroke="#334155" stroke-width="1.2"/>')
+    lines.append(f'<text x="{marker_left + 18}" y="{marker_top + 28}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">x-position of the root centroid, critical centroid, and late-tail centroid</text>')
+    origin_x = marker_x(0.0)
+    lines.append(f'<line x1="{origin_x:.2f}" y1="{marker_top + 44:.2f}" x2="{origin_x:.2f}" y2="{marker_top + marker_height - 22:.2f}" stroke="#dbeafe" stroke-width="1.1" stroke-dasharray="6 5" opacity="0.75"/>')
+    lines.append(f'<text x="{origin_x + 8:.2f}" y="{marker_top + 58:.2f}" fill="#dbeafe" font-size="12" font-family="Helvetica, Arial, sans-serif">origin</text>')
+    for tick in range(6):
+        value = x_min + (x_max - x_min) * tick / 5.0
+        x = marker_x(value)
+        lines.append(f'<line x1="{x:.2f}" y1="{marker_top + 44:.2f}" x2="{x:.2f}" y2="{marker_top + marker_height - 22:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{x:.2f}" y="{marker_top + marker_height - 2:.2f}" fill="#e2e8f0" font-size="14" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{value:+.2f}</text>')
+
+    for index, row in enumerate(opposition_rows):
+        y = marker_top + 94 + index * 86
+        lines.append(f'<text x="{marker_left + 18}" y="{y + 5:.2f}" fill="#f8fafc" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(display_names.get(row.polynomial_slug, row.polynomial_name))}</text>')
+        root_x = marker_x(row.root_centroid_x)
+        critical_x = marker_x(row.critical_centroid_x)
+        late_x = marker_x(row.late_tail_centroid_x)
+        lines.append(f'<line x1="{min(root_x, late_x):.2f}" y1="{y:.2f}" x2="{max(root_x, late_x):.2f}" y2="{y:.2f}" stroke="#64748b" stroke-width="2.2"/>')
+        lines.append(f'<circle cx="{root_x:.2f}" cy="{y:.2f}" r="8.5" fill="#f8fafc" stroke="#34d399" stroke-width="3.2"/>')
+        lines.append(f'<circle cx="{critical_x:.2f}" cy="{y:.2f}" r="8.5" fill="#f8fafc" stroke="#f59e0b" stroke-width="3.2"/>')
+        lines.append(f'<circle cx="{late_x:.2f}" cy="{y:.2f}" r="8.5" fill="#f8fafc" stroke="#f472b6" stroke-width="3.2"/>')
+        lines.append(f'<text x="{marker_left + marker_width - 18}" y="{y + 5:.2f}" fill="#f8fafc" font-size="15" text-anchor="end" font-family="Helvetica, Arial, sans-serif">late x {row.late_tail_centroid_x:+.2f}</text>')
+
+    lines.append('<g font-family="Helvetica, Arial, sans-serif" font-size="13">')
+    legend_y = marker_top + marker_height - 42
+    lines.append(f'<circle cx="{marker_left + 28}" cy="{legend_y:.2f}" r="7" fill="#f8fafc" stroke="#34d399" stroke-width="3"/><text x="{marker_left + 44}" y="{legend_y + 4:.2f}" fill="#dbeafe">root centroid x</text>')
+    lines.append(f'<circle cx="{marker_left + 220}" cy="{legend_y:.2f}" r="7" fill="#f8fafc" stroke="#f59e0b" stroke-width="3"/><text x="{marker_left + 236}" y="{legend_y + 4:.2f}" fill="#dbeafe">critical centroid x</text>')
+    lines.append(f'<circle cx="{marker_left + 442}" cy="{legend_y:.2f}" r="7" fill="#f8fafc" stroke="#f472b6" stroke-width="3"/><text x="{marker_left + 458}" y="{legend_y + 4:.2f}" fill="#dbeafe">late-tail centroid x</text>')
+    lines.append('</g>')
+
+    bar_left = summary_left + 24
+    bar_top = marker_top + marker_height + 36
+    bar_width = summary_width - 48
+    bar_height = 250
+    bar_max = max(0.75, max(row.left_late_share for row in opposition_rows) * 1.12)
+    bar_axis_left = bar_left + 180
+    bar_axis_width = bar_width - 198
+
+    def bar_x(value: float) -> float:
+        return bar_axis_left + (value / bar_max) * bar_axis_width
+
+    lines.append(f'<rect x="{bar_left}" y="{bar_top}" width="{bar_width}" height="{bar_height}" rx="18" fill="#07111c" stroke="#334155" stroke-width="1.2"/>')
+    lines.append(f'<text x="{bar_left + 18}" y="{bar_top + 28}" fill="#cbd5e1" font-size="15" font-family="Helvetica, Arial, sans-serif">where the late mass actually lives</text>')
+    for tick in range(5):
+        value = bar_max * tick / 4.0
+        x = bar_x(value)
+        lines.append(f'<line x1="{x:.2f}" y1="{bar_top + 44:.2f}" x2="{x:.2f}" y2="{bar_top + bar_height - 22:.2f}" stroke="#16202f" stroke-width="1"/>')
+        lines.append(f'<text x="{x:.2f}" y="{bar_top + bar_height - 2:.2f}" fill="#e2e8f0" font-size="14" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">{value:.2f}</text>')
+
+    for index, row in enumerate(opposition_rows):
+        y = bar_top + 84 + index * 56
+        lines.append(f'<text x="{bar_left + 18}" y="{y - 10:.2f}" fill="#f8fafc" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="700">{_escape(display_names.get(row.polynomial_slug, row.polynomial_name))}</text>')
+        lines.append(f'<rect x="{bar_axis_left}" y="{y - 18:.2f}" width="{bar_x(row.left_late_share) - bar_axis_left:.2f}" height="14" rx="7" fill="#60a5fa"/>')
+        lines.append(f'<rect x="{bar_axis_left}" y="{y + 4:.2f}" width="{bar_x(row.center_late_share) - bar_axis_left:.2f}" height="14" rx="7" fill="#f97316"/>')
+        lines.append(f'<text x="{bar_left + 186}" y="{y - 6:.2f}" fill="#dbeafe" font-size="14" font-family="Helvetica, Arial, sans-serif">left half {row.left_late_share:.1%}</text>')
+        lines.append(f'<text x="{bar_left + 186}" y="{y + 16:.2f}" fill="#fed7aa" font-size="14" font-family="Helvetica, Arial, sans-serif">center square {row.center_late_share:.1%}</text>')
+
+    flipped = next((row for row in opposition_rows if row.root_centroid_x * row.late_tail_centroid_x < 0.0), max(opposition_rows, key=lambda row: abs(row.root_centroid_x - row.late_tail_centroid_x)))
+    strongest_left = max(opposition_rows, key=lambda row: row.left_late_share)
+    most_center = max(opposition_rows, key=lambda row: row.center_late_share)
+    text_top = bar_top + bar_height + 36
+    lines.append(f'<text x="{summary_left + 24}" y="{text_top}" fill="#e5eefc" font-size="22" font-family="Helvetica, Arial, sans-serif" font-weight="700">Compact read</text>')
+    lines.append(_paragraph(summary_left + 24, text_top + 34, [
+        f'{display_names.get(flipped.polynomial_slug, flipped.polynomial_name).title()}: root x {flipped.root_centroid_x:+.2f}, critical x {flipped.critical_centroid_x:+.2f}, late x {flipped.late_tail_centroid_x:+.2f}.',
+        f'Late mass: {strongest_left.left_late_share:.1%} in the left half, only {flipped.center_late_share:.1%} in the center box.',
+        f'This is the third asymmetric story: winner-take-most, split-critical, and now a real counterweight lane.',
+    ], fill='#b9dcff', font_size=17, line_height=25))
+
+    legend_top = height - 100
+    lines.append(f'<rect x="{left}" y="{legend_top - 26}" width="{width - left - 42}" height="74" rx="16" fill="#020617" stroke="#334155" stroke-width="1.3"/>')
+    lines.append(f'<rect x="{left + 18}" y="{legend_top + 6}" width="220" height="18" rx="9" fill="url(#lateLegendOpposition)" stroke="#475569" stroke-width="1"/>')
+    lines.append(f'<text x="{left + 18}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" font-family="Helvetica, Arial, sans-serif">0%</text>')
+    lines.append(f'<text x="{left + 238}" y="{legend_top + 42}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="Helvetica, Arial, sans-serif">100%</text>')
+    lines.append(_paragraph(left + 282, legend_top + 2, [f'Orange = local late-tail share (≥ {late_threshold} steps or unresolved by {max_iter}).', 'White circles = roots, white × = critical points, pink dot = late-tail centroid.'], fill='#dbeafe', font_size=14, line_height=19))
     lines.append('</svg>')
 
     output = Path(output)

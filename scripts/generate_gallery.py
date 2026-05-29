@@ -10,8 +10,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from newton_fractal_lab.core import basin_summary, compare_late_tail_persistence, compare_radius_budgets, iterate_unity, iteration_histogram, sample_grid, scan_late_tail_tiles, scan_radius_bands, scan_unity_family
-from newton_fractal_lab.cubic import asymmetric_cubic, compare_cubic_budget_persistence, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, unity_cubic
-from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_late_tail_persistence_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
+from newton_fractal_lab.cubic import asymmetric_cubic, compare_cubic_budget_persistence, counterweight_asymmetric_cubic, cubic_basin_summary, cubic_critical_points, sample_cubic_grid, scan_critical_distance, scan_cubic_late_tail_tiles, split_critical_asymmetric_cubic, summarize_cubic_opposition, unity_cubic
+from newton_fractal_lab.render import export_png_from_svg, render_asymmetric_cubic_contrast_svg, render_asymmetric_cubic_opposition_svg, render_cubic_budget_persistence_svg, render_cubic_comparison_svg, render_cubic_persistence_atlas_svg, render_iteration_histograms_svg, render_late_tail_heatmap_svg, render_late_tail_persistence_svg, render_power_scan_svg, render_radius_budget_comparison_svg, render_radius_scan_svg, render_unity_svg
 
 ART = REPO / "art"
 REPORTS = REPO / "reports"
@@ -37,6 +37,9 @@ CUBIC_LATE_THRESHOLD = 10
 CUBIC_BUDGET_LOW = 8
 CUBIC_BUDGET_HIGH = 24
 CUBIC_BUDGET_TILES = 12
+ASYMMETRIC_OPPOSITION_MAX_ITER = 24
+ASYMMETRIC_OPPOSITION_LATE_THRESHOLD = 10
+ASYMMETRIC_OPPOSITION_TILES = 12
 SAMPLE_POINTS = [
     complex(0.15, 0.15),
     complex(-0.72, 0.34),
@@ -1261,8 +1264,235 @@ def main() -> None:
     }
     (REPO / "notebooks" / "cubic_persistence_atlas.ipynb").write_text(json.dumps(cubic_persistence_notebook, indent=2) + "\n")
 
+    counterweight = counterweight_asymmetric_cubic()
+    opposition_polynomials = [asymmetric, split_critical, counterweight]
+    opposition_samples = {
+        polynomial.slug: sample_cubic_grid(polynomial, CUBIC_GRID, CUBIC_GRID, max_iter=ASYMMETRIC_OPPOSITION_MAX_ITER)
+        for polynomial in opposition_polynomials
+    }
+    opposition_stats = {
+        polynomial.slug: cubic_basin_summary(polynomial, CUBIC_GRID, CUBIC_GRID, opposition_samples[polynomial.slug])
+        for polynomial in opposition_polynomials
+    }
+    opposition_tiles = {
+        polynomial.slug: scan_cubic_late_tail_tiles(
+            polynomial,
+            width=CUBIC_GRID,
+            height=CUBIC_GRID,
+            max_iter=ASYMMETRIC_OPPOSITION_MAX_ITER,
+            late_threshold=ASYMMETRIC_OPPOSITION_LATE_THRESHOLD,
+            tile_cols=ASYMMETRIC_OPPOSITION_TILES,
+            tile_rows=ASYMMETRIC_OPPOSITION_TILES,
+        )
+        for polynomial in opposition_polynomials
+    }
+    opposition_rows = summarize_cubic_opposition(
+        opposition_polynomials,
+        width=CUBIC_GRID,
+        height=CUBIC_GRID,
+        max_iter=ASYMMETRIC_OPPOSITION_MAX_ITER,
+        late_threshold=ASYMMETRIC_OPPOSITION_LATE_THRESHOLD,
+        tile_cols=ASYMMETRIC_OPPOSITION_TILES,
+        tile_rows=ASYMMETRIC_OPPOSITION_TILES,
+    )
+    opposition_svg = ART / "asymmetric-cubic-opposition.svg"
+    opposition_png = ART / "asymmetric-cubic-opposition.png"
+    render_asymmetric_cubic_opposition_svg(
+        polynomials=opposition_polynomials,
+        stats_by_slug=opposition_stats,
+        samples_by_slug=opposition_samples,
+        tiles_by_slug=opposition_tiles,
+        opposition_rows=opposition_rows,
+        output=opposition_svg,
+        max_iter=ASYMMETRIC_OPPOSITION_MAX_ITER,
+        late_threshold=ASYMMETRIC_OPPOSITION_LATE_THRESHOLD,
+    )
+    export_png_from_svg(opposition_svg, opposition_png, size=2400, dpi=300)
+
+    with (ART / "asymmetric-cubic-opposition.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "root_centroid_x",
+                "critical_centroid_x",
+                "late_tail_centroid_x",
+                "late_tail_centroid_y",
+                "left_late_share",
+                "center_late_share",
+                "grid_late_fraction",
+                "dominant_basin_share",
+            ],
+        )
+        writer.writeheader()
+        for row in opposition_rows:
+            writer.writerow(
+                {
+                    "polynomial": row.polynomial_slug,
+                    "root_centroid_x": row.root_centroid_x,
+                    "critical_centroid_x": row.critical_centroid_x,
+                    "late_tail_centroid_x": row.late_tail_centroid_x,
+                    "late_tail_centroid_y": row.late_tail_centroid_y,
+                    "left_late_share": row.left_late_share,
+                    "center_late_share": row.center_late_share,
+                    "grid_late_fraction": row.grid_late_fraction,
+                    "dominant_basin_share": row.dominant_basin_share,
+                }
+            )
+
+    with (ART / "asymmetric-cubic-opposition-tiles.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "polynomial",
+                "budget",
+                "tile_x",
+                "tile_y",
+                "x_min",
+                "x_max",
+                "y_min",
+                "y_max",
+                "sample_count",
+                "mean_iterations",
+                "late_fraction",
+                "unresolved_fraction",
+            ],
+        )
+        writer.writeheader()
+        for rows in opposition_tiles.values():
+            for row in rows:
+                writer.writerow(
+                    {
+                        "polynomial": row.polynomial_slug,
+                        "budget": row.budget,
+                        "tile_x": row.tile_x,
+                        "tile_y": row.tile_y,
+                        "x_min": row.x_min,
+                        "x_max": row.x_max,
+                        "y_min": row.y_min,
+                        "y_max": row.y_max,
+                        "sample_count": row.sample_count,
+                        "mean_iterations": row.mean_iterations,
+                        "late_fraction": row.late_fraction,
+                        "unresolved_fraction": row.unresolved_fraction,
+                    }
+                )
+
+    opposition_by_slug = {row.polynomial_slug: row for row in opposition_rows}
+    counterweight_row = opposition_by_slug[counterweight.slug]
+    asym_row = opposition_by_slug[asymmetric.slug]
+    split_row = opposition_by_slug[split_critical.slug]
+    opposition_lines = [
+        "# Asymmetric cubic opposition",
+        "",
+        "This third asymmetric pass asks a sharper question than the earlier contrast cards.",
+        "Once symmetry is already broken, does the slow Newton tail still have to lean toward the same side as the root cluster?",
+        "",
+        "## Main read",
+        "",
+        f"- the old asymmetric cubic still leans with its winner: root centroid x `{asym_row.root_centroid_x:+.2f}`, late-tail centroid x `{asym_row.late_tail_centroid_x:+.2f}`, dominant basin share `{asym_row.dominant_basin_share:.1%}`",
+        f"- the split-critical cubic stays much closer to the middle: late-tail centroid x `{split_row.late_tail_centroid_x:+.2f}` and center-box late share `{split_row.center_late_share:.1%}`",
+        f"- the new counterweight cubic is the real change: root centroid x `{counterweight_row.root_centroid_x:+.2f}` and critical centroid x `{counterweight_row.critical_centroid_x:+.2f}` both stay on the right, but the late-tail centroid flips to `{counterweight_row.late_tail_centroid_x:+.2f}`",
+        f"- that flip is not cosmetic: `{counterweight_row.left_late_share:.1%}` of the late mass lands in the left half of the square, while only `{counterweight_row.center_late_share:.1%}` stays in the small center box",
+        "",
+        "## Why this earns a third asymmetric lane",
+        "",
+        "The first asymmetric cubic taught one lesson: broken symmetry can let one root own most of the square.",
+        "The split-critical cubic taught a second one: broken symmetry can stay balanced and keep a hotter near-critical lane alive.",
+        "",
+        "The new counterweight cubic closes the next loophole after both of those.",
+        "It shows that the slow geometry does not have to follow the root cluster itself.",
+        "You can keep all three roots and both critical points on the right side of the plane and still push most of the late tail left of the origin.",
+        "",
+        "That matters because it turns the asymmetric branch into three genuinely different stories instead of one main example plus minor variants.",
+        "",
+        "## Read the figure",
+        "",
+        "- top row: basin maps for the three asymmetric cubics, with roots marked by circles and critical points by × markers",
+        f"- bottom row: late-tail heatmaps at `{ASYMMETRIC_OPPOSITION_MAX_ITER}` Newton steps with a `{ASYMMETRIC_OPPOSITION_LATE_THRESHOLD}`-step late bar",
+        "- right panel: x-position markers for the root centroid, critical centroid, and late-tail centroid, plus left-half and center-box late-mass shares",
+        "",
+        "Open `art/asymmetric-cubic-opposition.svg`, `art/asymmetric-cubic-opposition.png`, `art/asymmetric-cubic-opposition.csv`, `art/asymmetric-cubic-opposition-tiles.csv`, and `notebooks/asymmetric_cubic_opposition.ipynb` next.",
+    ]
+    (REPORTS / "asymmetric-cubic-opposition.md").write_text("\n".join(opposition_lines) + "\n")
+
+    opposition_notebook = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "# Asymmetric cubic opposition\n",
+                    "\n",
+                    "This notebook is the slower companion to `reports/asymmetric-cubic-opposition.md`.\n",
+                    "It reads the generated summary CSV and checks the centroid-flip claim directly.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "import csv\n",
+                    "from pathlib import Path\n",
+                    "\n",
+                    "rows = []\n",
+                    "with (Path('..') / 'art' / 'asymmetric-cubic-opposition.csv').open() as handle:\n",
+                    "    for row in csv.DictReader(handle):\n",
+                    "        parsed = {key: (float(value) if key != 'polynomial' else value) for key, value in row.items()}\n",
+                    "        rows.append(parsed)\n",
+                    "rows\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Check which cubic actually flips\n",
+                    "\n",
+                    "A real counterweight lane should keep the root centroid positive while pushing the late-tail centroid negative.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "[(row['polynomial'], row['root_centroid_x'], row['late_tail_centroid_x']) for row in rows]\n",
+                ],
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Compare where the late mass lives\n",
+                    "\n",
+                    "The new claim is not just about one x-coordinate. It is also about where the late mass concentrates across the square.\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "sorted([(row['polynomial'], row['left_late_share'], row['center_late_share']) for row in rows], key=lambda item: item[1], reverse=True)\n",
+                ],
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python", "version": "3.11"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    (REPO / "notebooks" / "asymmetric_cubic_opposition.ipynb").write_text(json.dumps(opposition_notebook, indent=2) + "\n")
+
     (REPORTS / "unity-power-scan.md").write_text("\n".join(scan_lines) + "\n")
-    print("generated gallery, scan figures, late-tail map, late-tail persistence atlas, cubic persistence atlas, asymmetric cubic contrasts, and reports")
+    print("generated gallery, scan figures, late-tail map, late-tail persistence atlas, cubic persistence atlas, asymmetric cubic opposition, asymmetric cubic contrasts, and reports")
 
 
 if __name__ == "__main__":

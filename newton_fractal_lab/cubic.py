@@ -114,6 +114,20 @@ class CubicBudgetComparisonRow:
         return self.low_grid_late - self.high_grid_late
 
 
+@dataclass(frozen=True)
+class CubicOppositionRow:
+    polynomial_slug: str
+    polynomial_name: str
+    root_centroid_x: float
+    critical_centroid_x: float
+    late_tail_centroid_x: float
+    late_tail_centroid_y: float
+    left_late_share: float
+    center_late_share: float
+    grid_late_fraction: float
+    dominant_basin_share: float
+
+
 def cubic_from_roots(
     name: str,
     slug: str,
@@ -168,6 +182,18 @@ def split_critical_asymmetric_cubic() -> CubicPolynomial:
             1.0 + 0.0j,
             complex(-0.35, 0.92),
             complex(-0.30, -0.88),
+        ),
+    )
+
+
+def counterweight_asymmetric_cubic() -> CubicPolynomial:
+    return cubic_from_roots(
+        "counterweight asymmetric cubic",
+        "counterweight-asymmetric-cubic",
+        (
+            1.0 + 0.0j,
+            complex(0.52, 0.12),
+            complex(0.36, -0.02),
         ),
     )
 
@@ -495,6 +521,65 @@ def compare_cubic_budget_persistence(
                 high_unresolved_fraction=high_unresolved,
                 low_inner_band_late=low_inner_rows[0].late_fraction,
                 high_inner_band_late=high_inner_rows[0].late_fraction,
+            )
+        )
+    return rows
+
+
+def summarize_cubic_opposition(
+    polynomials: list[CubicPolynomial],
+    *,
+    width: int = 120,
+    height: int = 120,
+    max_iter: int = 24,
+    late_threshold: int = 10,
+    tile_cols: int = 12,
+    tile_rows: int = 12,
+) -> list[CubicOppositionRow]:
+    rows: list[CubicOppositionRow] = []
+    for polynomial in polynomials:
+        samples = sample_cubic_grid(polynomial, width, height, max_iter=max_iter)
+        stats = cubic_basin_summary(polynomial, width, height, samples)
+        tiles = scan_cubic_late_tail_tiles(
+            polynomial,
+            width=width,
+            height=height,
+            max_iter=max_iter,
+            late_threshold=late_threshold,
+            tile_cols=tile_cols,
+            tile_rows=tile_rows,
+        )
+        late_weight = sum(tile.sample_count * tile.late_fraction for tile in tiles)
+        if late_weight <= 1.0e-12:
+            late_tail_centroid_x = 0.0
+            late_tail_centroid_y = 0.0
+            left_late_share = 0.0
+            center_late_share = 0.0
+            grid_late_fraction = 0.0
+        else:
+            late_tail_centroid_x = sum(tile.sample_count * tile.late_fraction * tile.x_mid for tile in tiles) / late_weight
+            late_tail_centroid_y = sum(tile.sample_count * tile.late_fraction * tile.y_mid for tile in tiles) / late_weight
+            left_late_share = sum(tile.sample_count * tile.late_fraction for tile in tiles if tile.x_mid < 0.0) / late_weight
+            center_late_share = sum(
+                tile.sample_count * tile.late_fraction
+                for tile in tiles
+                if abs(tile.x_mid) < 0.35 and abs(tile.y_mid) < 0.35
+            ) / late_weight
+            grid_late_fraction = late_weight / (width * height)
+
+        critical_points = cubic_critical_points(polynomial)
+        rows.append(
+            CubicOppositionRow(
+                polynomial_slug=polynomial.slug,
+                polynomial_name=polynomial.name,
+                root_centroid_x=sum(root.real for root in polynomial.roots) / len(polynomial.roots),
+                critical_centroid_x=sum(point.real for point in critical_points) / len(critical_points),
+                late_tail_centroid_x=late_tail_centroid_x,
+                late_tail_centroid_y=late_tail_centroid_y,
+                left_late_share=left_late_share,
+                center_late_share=center_late_share,
+                grid_late_fraction=grid_late_fraction,
+                dominant_basin_share=max(stats.basin_shares),
             )
         )
     return rows
